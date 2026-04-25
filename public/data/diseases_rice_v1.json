@@ -1,0 +1,34 @@
+{
+  "Blast": {
+    "name_bn": "ধানের ব্লাস্ট",
+    "name_en": "Rice Blast",
+    "symptoms_bn": "পাতায় চোখের মতো বাদামি/ধূসর দাগ, মাঝখানে সাদা, কিনারা লালচে। তীব্র হলে ডগা কালো হয়ে যায়।",
+    "symptoms_en": "Eye-shaped brown/gray lesions with white centers and reddish borders. Severe cases cause neck rot.",
+    "treatment_bn": "ট্রাইসাইক্লাজল (০.১%) বা কারবেন্ডাজিম স্প্রে করুন। জমির পানি নিষ্কাশন করুন। অতিরিক্ত নাইট্রোজেন সার কম দিন।",
+    "treatment_en": "Spray Tricyclazole (0.1%) or Carbendazim. Drain standing water. Reduce excess nitrogen fertilizer."
+  },
+  "Brown_Spot": {
+    "name_bn": "ব্রাউন স্পট",
+    "name_en": "Brown Spot",
+    "symptoms_bn": "পাতায় ছোট বৃত্তাকার বাদামি দাগ, মাঝখানে ধূসর বা কালচে। বীজ ও খোসায়ও দেখা যায়।",
+    "symptoms_en": "Small circular brown spots with gray/dark centers. Can affect seeds and husks.",
+    "treatment_bn": "প্রপিকোনাজল বা হেক্সাকোনাজল স্প্রে করুন। জিংক ও পটাস সার যোগ করুন। বীজ শোধন করে বুনুন।",
+    "treatment_en": "Spray Propiconazole or Hexaconazole. Apply Zinc & Potassium fertilizers. Treat seeds before sowing."
+  },
+  "Leaf_Scald": {
+    "name_bn": "লিফ স্কল্ড",
+    "name_en": "Leaf Scald",
+    "symptoms_bn": "পাতার ডগা থেকে লম্বা ফ্যাকাশে হলুদ বা সাদাটে দাগ, কিনারা অসম। তীব্র রোদ বা পানি জমে থাকলে বাড়ে।",
+    "symptoms_en": "Long pale yellow/whitish streaks from leaf tips with wavy margins. Worsens with heat/waterlogging.",
+    "treatment_bn": "কপার-ভিত্তিক ফাঙ্গিসাইড বা স্ট্রেপটোমাইসিন ব্যবহার করুন। আক্রান্ত পাতা সরান। সেচের পানি নিয়ন্ত্রণ করুন।",
+    "treatment_en": "Use copper-based fungicides or Streptomycin. Remove infected leaves. Manage irrigation carefully."
+  },
+  "Healthy": {
+    "name_bn": "সুস্থ ধান",
+    "name_en": "Healthy Plant",
+    "symptoms_bn": "পাতা গাঢ় সবুজ, কোনো দাগ, ফাটা বা বিবর্ণতা নেই। গাছ সোজা ও শক্তিশালী।",
+    "symptoms_en": "Dark green leaves, no spots, cracks, or discoloration. Plant stands straight and strong.",
+    "treatment_bn": "নিয়মিত সেচ ও সুষম সার প্রয়োগ চলমান রাখুন। কীটপতঙ্গ পর্যবেক্ষণ করুন। সময়মতো আগাছা পরিষ্কার করুন।",
+    "treatment_en": "Maintain regular irrigation & balanced fertilization. Monitor for pests. Clear weeds on time."
+  }
+}
