@@ -10,6 +10,8 @@ export default function App() {
   const [imageSrc, setImageSrc] = useState(null)
   const [result, setResult] = useState(null)
   const [scanning, setScanning] = useState(false)
+  
+  const [currentScreen, setCurrentScreen] = useState('crop') // 'crop', 'scanner', 'result'
 
   const { isLoading, error, classify, fallbackWarning } = useClassifier(crop)
 
@@ -27,6 +29,7 @@ export default function App() {
       
       const res = await classify(img)
       setResult({ ...res, fallbackWarning })
+      setCurrentScreen('result')
     } catch (err) {
       console.error('Inference failed:', err)
     } finally {
@@ -34,40 +37,54 @@ export default function App() {
     }
   }
 
+  // Navigation handlers
+  const goBackToCrop = () => setCurrentScreen('crop')
+  const goBackToScanner = () => {
+    setImageSrc(null)
+    setResult(null)
+    setCurrentScreen('scanner')
+  }
+
+  // Language toggle shared across screens
+  const toggleLang = () => setLang(l => l === 'bn' ? 'en' : 'bn')
+
   return (
-    <div className="min-h-screen bg-green-50 text-gray-800 flex flex-col">
-      {/* Header */}
-      <header className="bg-green-700 text-white p-4 shadow-md flex justify-between items-center">
-        <h1 className="text-lg font-bold">🌾 ধান চিকিৎসা | Rice AI</h1>
-        <button onClick={() => setLang(l => l === 'bn' ? 'en' : 'bn')} className="bg-white/20 px-2 py-1 rounded text-sm hover:bg-white/30">
-          {lang === 'bn' ? '🇬🇧 EN' : '🇧🇩 বাংলা'}
-        </button>
-      </header>
+    <div className="min-h-screen bg-[#0a1a0f] text-[#f0fdf4] flex flex-col font-sans relative overflow-hidden">
+      
+      {/* Global Background Gradient Mesh (Blobs) */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-emerald-900/20 rounded-full blur-[100px] animate-blob pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-emerald-800/10 rounded-full blur-[120px] animate-blob-slow pointer-events-none"></div>
 
-      <main className="flex-1 p-4 flex flex-col items-center gap-4">
-        <CropSelector currentCrop={crop} onCropChange={setCrop} />
+      {currentScreen === 'crop' && (
+        <CropSelector 
+          currentCrop={crop} 
+          onCropChange={setCrop} 
+          onStart={() => setCurrentScreen('scanner')}
+          lang={lang}
+          toggleLang={toggleLang}
+          isLoading={isLoading}
+          error={error}
+        />
+      )}
 
-        {isLoading ? (
-          <div className="text-center mt-10">🤖 AI মডেল লোড হচ্ছে... / Loading model...</div>
-        ) : error ? (
-          <div className="text-center mt-10 text-red-600">❌ {error}</div>
-        ) : (
-          <>
-            <CameraScanner onCapture={handleCapture} />
-            {imageSrc && <img src={imageSrc} alt="Captured" className="w-32 h-32 object-cover rounded-lg border mt-2" />}
-            
-            <ResultDisplay result={result} lang={lang} />
-            
-            {scanning && (
-              <div className="mt-2 text-green-700 font-medium animate-pulse">🔍 বিশ্লেষণ চলছে... / Analyzing...</div>
-            )}
-          </>
-        )}
-      </main>
+      {currentScreen === 'scanner' && (
+        <CameraScanner 
+          onCapture={handleCapture} 
+          onBack={goBackToCrop}
+          lang={lang}
+          toggleLang={toggleLang}
+          scanning={scanning}
+        />
+      )}
 
-      <footer className="p-3 text-center text-xs text-gray-500 bg-white border-t">
-        100% অফলাইন কাজ করে | Works 100% offline after first load
-      </footer>
+      {currentScreen === 'result' && (
+        <ResultDisplay 
+          result={result} 
+          lang={lang} 
+          onBack={goBackToScanner}
+          imageSrc={imageSrc}
+        />
+      )}
     </div>
   )
 }

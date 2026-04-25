@@ -21,8 +21,8 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Increase cache limit to 5 MB to accommodate ONNX models
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
+        // Increase cache limit to 30 MB to accommodate ONNX models and WASM files
+        maximumFileSizeToCacheInBytes: 30 * 1024 * 1024, // 30 MB
         // Cache all static assets + ONNX models
         globPatterns: ['**/*.{js,css,html,png,svg,jpg,woff2,ttf,onnx,json,wasm}'],
         cleanupOutdatedCaches: true, // Auto-delete old model versions
