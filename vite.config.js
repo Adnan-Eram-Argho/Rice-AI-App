@@ -24,7 +24,7 @@ export default defineConfig({
         // Increase cache limit to 5 MB to accommodate ONNX models
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
         // Cache all static assets + ONNX models
-        globPatterns: ['**/*.{js,css,html,png,svg,jpg,woff2,ttf,onnx,json}'],
+        globPatterns: ['**/*.{js,css,html,png,svg,jpg,woff2,ttf,onnx,json,wasm}'],
         cleanupOutdatedCaches: true, // Auto-delete old model versions
         runtimeCaching: [
           {
@@ -38,9 +38,29 @@ export default defineConfig({
               },
               cacheableResponse: { statuses: [0, 200] }
             }
+          },
+          {
+            urlPattern: /.*\.wasm$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'wasm-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365
+              },
+              cacheableResponse: { statuses: [0, 200] }
+            }
           }
         ]
       }
     })
-  ]
+  ],
+  // Ensure WASM files are handled correctly
+  optimizeDeps: {
+    exclude: ['onnxruntime-web']
+  },
+  build: {
+    // Allow larger chunks for ONNX models
+    chunkSizeWarningLimit: 3000
+  }
 })
