@@ -25,10 +25,12 @@ export default function ResultDisplay({ result, lang, onBack, imageSrc }) {
   const splitItems = (text) => text ? text.split(/[.।]/).map(s => s.trim()).filter(s => s.length > 0) : []
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col bg-[#0a1a0f] overflow-y-auto animate-fade-in-up pb-28">
+    <div className="absolute inset-0 z-20 flex flex-col bg-[#0a1a0f] animate-fade-in-up overflow-hidden">
       
       {/* Dynamic Background Radial Glow */}
-      <div className={`fixed top-1/4 left-1/2 -translate-x-1/2 w-[90vw] h-[90vw] rounded-full blur-[130px] pointer-events-none transition-colors duration-1000 ${isConfident ? 'bg-emerald-900/30' : 'bg-amber-900/20'}`}></div>
+      <div className={`absolute top-1/4 left-1/2 -translate-x-1/2 w-[90vw] h-[90vw] rounded-full blur-[130px] pointer-events-none transition-colors duration-1000 ${isConfident ? 'bg-emerald-900/30' : 'bg-amber-900/20'}`}></div>
+
+      <div className="flex-1 overflow-y-auto pb-28 relative z-10 w-full">
 
       {/* Top Header */}
       <div className="sticky top-0 z-30 flex items-center p-4 bg-[#0a1a0f]/80 backdrop-blur-xl border-b border-white/5">
@@ -138,9 +140,11 @@ export default function ResultDisplay({ result, lang, onBack, imageSrc }) {
         )}
       </div>
 
-      {/* Bottom Action Bar (Fixed) */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 pt-8 bg-gradient-to-t from-[#0a1a0f] via-[#0a1a0f]/95 to-transparent z-40">
-        <div className="max-w-lg mx-auto flex gap-4">
+      </div>
+
+      {/* Bottom Action Bar */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 pt-12 bg-gradient-to-t from-[#0a1a0f] via-[#0a1a0f]/95 to-transparent z-40 pointer-events-none">
+        <div className="max-w-lg mx-auto flex gap-4 pointer-events-auto">
           <button 
             onClick={onBack}
             className={`flex-1 py-4.5 rounded-2xl font-bold text-[15px] transition-all duration-300 active:scale-[0.97] hover:scale-[1.02] border-2 ${theme.buttonOutline} flex items-center justify-center gap-2`}
