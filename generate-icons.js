@@ -7,6 +7,7 @@
  * Usage: node generate-icons.js
  */
 
+/* eslint-disable no-undef */
 const fs = require('fs');
 const path = require('path');
 
@@ -17,7 +18,7 @@ let sharp;
 try {
   sharp = require('sharp');
   console.log('✅ Using sharp library for fast icon generation\n');
-} catch (e) {
+} catch {
   console.log('⚠️  Sharp not found. Using alternative method.\n');
   console.log('For better results, install sharp:');
   console.log('npm install --save-dev sharp\n');
