@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Icon Generator - Rice AI Doctor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+        }
+        h1 {
+            color: #10b981;
+            text-align: center;
+        }
+        .instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .step {
+            margin: 15px 0;
+            padding: 10px;
+            background: #f0fdf4;
+            border-left: 4px solid #10b981;
+            border-radius: 4px;
+        }
+        canvas {
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            margin: 20px 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        button {
+            background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+        }
+        .icon-preview {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        .icon-box {
+            text-align: center;
+        }
+        .icon-label {
+            margin-top: 10px;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌾 PWA Icon Generator</h1>
+    
+    <div class="instructions">
+        <h2>How to Generate Your PWA Icons:</h2>
+        <div class="step">
+            <strong>Step 1:</strong> The icons below are generated from your favicon.svg design
+        </div>
+        <div class="step">
+            <strong>Step 2:</strong> Click each "Download" button to save the PNG files
+        </div>
+        <div class="step">
+            <strong>Step 3:</strong> Move the downloaded files to your project's <code>public/</code> folder
+        </div>
+        <div class="step">
+            <strong>Step 4:</strong> Rebuild and deploy your app (<code>npm run build</code>)
+        </div>
+    </div>
+
+    <div class="icon-preview">
+        <div class="icon-box">
+            <canvas id="canvas192" width="192" height="192"></canvas>
+            <div class="icon-label">192x192 (Home Screen)</div>
+            <button onclick="downloadIcon('canvas192', 'pwa-192x192.png')">Download 192x192</button>
+        </div>
+        
+        <div class="icon-box">
+            <canvas id="canvas512" width="512" height="512"></canvas>
+            <div class="icon-label">512x512 (Splash Screen)</div>
+            <button onclick="downloadIcon('canvas512', 'pwa-512x512.png')">Download 512x512</button>
+        </div>
+    </div>
+
+    <script>
+        // SVG favicon content (matching your new design)
+        const svgContent = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="leafGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#14b8a6;stop-opacity:1" />
+            </linearGradient>
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#10b981" flood-opacity="0.3"/>
+            </filter>
+          </defs>
+          
+          <!-- Background Circle -->
+          <circle cx="50" cy="50" r="48" fill="url(#leafGradient)" filter="url(#shadow)"/>
+          
+          <!-- Rice Grain/Stalk Icon -->
+          <g transform="translate(50, 50)">
+            <!-- Main stalk -->
+            <path d="M 0,-25 Q -2,-10 0,5 Q 2,15 0,25" 
+                  stroke="white" 
+                  stroke-width="3" 
+                  fill="none" 
+                  stroke-linecap="round"/>
+            
+            <!-- Left grain cluster -->
+            <ellipse cx="-8" cy="-15" rx="4" ry="7" fill="white" opacity="0.95" transform="rotate(-20, -8, -15)"/>
+            <ellipse cx="-10" cy="-5" rx="3.5" ry="6" fill="white" opacity="0.9" transform="rotate(-15, -10, -5)"/>
+            <ellipse cx="-9" cy="5" rx="3" ry="5" fill="white" opacity="0.85" transform="rotate(-10, -9, 5)"/>
+            
+            <!-- Right grain cluster -->
+            <ellipse cx="8" cy="-12" rx="4" ry="7" fill="white" opacity="0.95" transform="rotate(20, 8, -12)"/>
+            <ellipse cx="10" cy="-2" rx="3.5" ry="6" fill="white" opacity="0.9" transform="rotate(15, 10, -2)"/>
+            <ellipse cx="9" cy="8" rx="3" ry="5" fill="white" opacity="0.85" transform="rotate(10, 9, 8)"/>
+            
+            <!-- Small top grains -->
+            <ellipse cx="-3" cy="-20" rx="2.5" ry="4" fill="white" opacity="0.8" transform="rotate(-5, -3, -20)"/>
+            <ellipse cx="3" cy="-18" rx="2.5" ry="4" fill="white" opacity="0.8" transform="rotate(5, 3, -18)"/>
+          </g>
+        </svg>`;
+
+        function renderIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            // Create blob from SVG
+            const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+            
+            const img = new Image();
+            img.onload = function() {
+                // Clear canvas
+                ctx.clearRect(0, 0, size, size);
+                
+                // Draw rounded rectangle background for better appearance
+                ctx.fillStyle = '#ffffff';
+                roundRect(ctx, 0, 0, size, size, size * 0.15);
+                ctx.fill();
+                
+                // Add subtle shadow
+                ctx.shadowColor = 'rgba(16, 185, 129, 0.2)';
+                ctx.shadowBlur = size * 0.05;
+                ctx.shadowOffsetY = size * 0.02;
+                
+                // Draw the SVG icon centered
+                const padding = size * 0.1;
+                const iconSize = size - (padding * 2);
+                ctx.drawImage(img, padding, padding, iconSize, iconSize);
+                
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
+        }
+
+        function roundRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+        }
+
+        function downloadIcon(canvasId, filename) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // Render both sizes on page load
+        window.onload = function() {
+            renderIcon('canvas192', 192);
+            renderIcon('canvas512', 512);
+        };
+    </script>
+</body>
+</html>
