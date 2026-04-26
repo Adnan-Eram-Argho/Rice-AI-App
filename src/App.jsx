@@ -49,11 +49,12 @@ export default function App() {
   const toggleLang = () => setLang(l => l === 'bn' ? 'en' : 'bn')
 
   return (
-    <div className="min-h-screen bg-[#0a1a0f] text-[#f0fdf4] flex flex-col font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 text-slate-900 flex flex-col font-sans relative overflow-hidden">
       
-      {/* Global Background Gradient Mesh (Blobs) */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-emerald-900/20 rounded-full blur-[100px] animate-blob pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-emerald-800/10 rounded-full blur-[120px] animate-blob-slow pointer-events-none"></div>
+      {/* Modern Gradient Mesh Background */}
+      <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-gradient-to-br from-emerald-200/40 to-teal-200/40 rounded-full blur-3xl animate-blob pointer-events-none"></div>
+      <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-gradient-to-tr from-green-200/30 to-emerald-100/30 rounded-full blur-3xl animate-blob-slow pointer-events-none"></div>
+      <div className="absolute top-[40%] left-[30%] w-[400px] h-[400px] bg-gradient-to-r from-lime-200/20 to-emerald-200/20 rounded-full blur-3xl animate-blob pointer-events-none" style={{ animationDelay: '2s' }}></div>
 
       {currentScreen === 'crop' && (
         <CropSelector 
