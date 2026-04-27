@@ -4,7 +4,7 @@
     "rice": {
       "name_bn": "ধান",
       "name_en": "Rice",
-      "current_metadata_file": "metadata_rice_v2.json",
+      "current_metadata_file": "metadata_rice_v3.json",
       "diseases_data_file": "diseases_rice_v1.json",
       "fallback_warning_bn": "নিশ্চিত নয়, কৃষি কর্মকর্তার পরামর্শ নিন",
       "fallback_warning_en": "Uncertain result. Please consult an agriculture officer."

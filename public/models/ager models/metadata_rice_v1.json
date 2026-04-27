@@ -1,0 +1,30 @@
+{
+  "crop_id": "rice",
+  "model_version": "v1",
+  "model_filename": "rice_model_v1.onnx",
+  "input_name": "input",
+  "input_shape": [
+    1,
+    224,
+    224,
+    3
+  ],
+  "output_name": "dense_1",
+  "output_shape": [
+    1,
+    4
+  ],
+  "input_format": "NHWC",
+  "confidence_threshold": 0.75,
+  "classes": {
+    "0": "Blast",
+    "1": "Brown_Spot",
+    "2": "Healthy",
+    "3": "Leaf_Scald"
+  },
+  "quantization": "INT8",
+  "model_size_mb": 2.48,
+  "original_accuracy": 0.7849,
+  "preprocessing_note": "Resize to 224x224, normalize /255.0, keep as (224,224,3), add batch dim",
+  "frontend_hint": "Use NHWC format. Normalize: pixel/255.0. Threshold: 75%"
+}

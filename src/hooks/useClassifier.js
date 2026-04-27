@@ -91,15 +91,16 @@ export default function useClassifier(cropId) {
       const ctx = canvas.getContext('2d')
       ctx.drawImage(imgElement, 0, 0, 224, 224)
       
-      // Extract & normalize pixels [0,1] → NHWC
-      const { data } = ctx.getImageData(0, 0, 224, 224)
-      const tensorData = new Float32Array(224 * 224 * 3)
-      let idx = 0
-      for (let i = 0; i < data.length; i += 4) {
-        tensorData[idx++] = data[i] / 255.0
-        tensorData[idx++] = data[i+1] / 255.0
-        tensorData[idx++] = data[i+2] / 255.0
-      }
+// Extract pixels [0,255] → NHWC (NO DIVISION)
+const { data } = ctx.getImageData(0, 0, 224, 224)
+const tensorData = new Float32Array(224 * 224 * 3)
+let idx = 0
+for (let i = 0; i < data.length; i += 4) {
+  tensorData[idx++] = data[i]                // ✅ Raw R (0-255)
+  tensorData[idx++] = data[i+1]              // ✅ Raw G (0-255)
+  tensorData[idx++] = data[i+2]              // ✅ Raw B (0-255)
+  // Skip alpha: data[i+3]
+}
 
       const inputTensor = new ort.Tensor('float32', tensorData, [1, 224, 224, 3])
       const feeds = { [sessionRef.current.inputNames[0]]: inputTensor }
