@@ -11,8 +11,7 @@
   ],
   "output_name": "rice_output",
   "input_format": "NHWC",
-  "normalization": "none",
-  "input_range": "0-255",
+  "normalization": "raw_0_255",
   "confidence_threshold": 0.75,
   "classes": {
     "0": "Blast",
@@ -20,7 +19,10 @@
     "2": "Healthy",
     "3": "Leaf_Scald"
   },
-  "quantization": "none",
+  "quantization": "FP32",
+  "model_size_mb": 17.8,
   "base_model": "EfficientNet-B0",
-  "preprocessing_note": "Resize 224x224, use raw 0-255 pixel values (NO division), NHWC format"
+  "preprocessing_note": "Resize 224x224, use raw 0-255 pixel values (NO division), NHWC format",
+  "val_accuracy": 0.9088,
+  "test_accuracy": 0.9088
 }

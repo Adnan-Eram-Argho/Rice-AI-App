@@ -91,7 +91,7 @@ export default function useClassifier(cropId) {
       const ctx = canvas.getContext('2d')
       ctx.drawImage(imgElement, 0, 0, 224, 224)
       
-// Extract pixels [0,255] → NHWC (NO DIVISION)
+      // Extract pixels [0,255] → NHWC (NO DIVISION)
 const { data } = ctx.getImageData(0, 0, 224, 224)
 const tensorData = new Float32Array(224 * 224 * 3)
 let idx = 0
@@ -100,6 +100,16 @@ for (let i = 0; i < data.length; i += 4) {
   tensorData[idx++] = data[i+1]              // ✅ Raw G (0-255)
   tensorData[idx++] = data[i+2]              // ✅ Raw B (0-255)
   // Skip alpha: data[i+3]
+}
+
+// 🔍 Preprocessing debug check (first pixel value)
+if (import.meta.env.DEV) {
+  const sampleVal = tensorData[0]
+  if (sampleVal > 1.0 && sampleVal <= 255.0) {
+    console.log('✅ CORRECT: Raw 0-255 values (matches training)')
+  } else if (sampleVal <= 1.0) {
+    console.error('❌ WRONG: Values in [0,1] range — remove /255.0 division')
+  }
 }
 
       const inputTensor = new ort.Tensor('float32', tensorData, [1, 224, 224, 3])
