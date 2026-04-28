@@ -22,7 +22,7 @@
   "quantization": "FP32",
   "model_size_mb": 17.8,
   "base_model": "EfficientNet-B0",
-  "preprocessing_note": "Resize 224x224, use raw 0-255 pixel values (NO division), NHWC format",
+  "preprocessing_note": "Resize 224x224, use raw 0-255 pixel values (NO division), NHWC format. EfficientNet has internal norm layer.",
   "val_accuracy": 0.9088,
   "test_accuracy": 0.9088
 }

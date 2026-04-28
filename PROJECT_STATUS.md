@@ -1,7 +1,7 @@
-# 📋 PROJECT STATUS & ACTION ITEMS - RICE AI APP V3 (FP32)
+# 📋 PROJECT STATUS & ACTION ITEMS - RICE AI APP V3.1 (FP32 PRODUCTION)
 
 **Date**: 2026-04-28  
-**Status**: ✅ Code verified, ✅ Configuration updated to FP32, 🔄 Action required for deployment
+**Status**: ✅ Code verified, ✅ Configuration updated to FP32, ⚠️ Action required for deployment
 
 ---
 
@@ -9,7 +9,7 @@
 
 ### 1. Core Architecture ✅
 - **Zero hardcoded crops**: Dynamic config loading via `crops_config.json`
-- **EfficientNet-B0 model**: Correctly configured in metadata
+- **EfficientNet-B0 model**: Functional API SE Block (no custom objects needed)
 - **Class mapping**: Blast=0, Brown_Spot=1, Healthy=2, Leaf_Scald=3
 - **Confidence threshold**: 0.75 (triggers fallback warning below this)
 
@@ -45,7 +45,7 @@ img.astype(np.float32)  # Range [0, 255] — NO division by 255.0
 
 ---
 
-## ✅ CONFIGURATION UPDATED TO FP32
+## ✅ CONFIGURATION UPDATED TO FP32 (V3.1 AUDITED)
 
 ### Model File Selection
 **Current Configuration**: Using **FP32 model** (`rice_model_v3_fp32.onnx`)
@@ -58,16 +58,23 @@ img.astype(np.float32)  # Range [0, 255] — NO division by 255.0
 - ✅ Added fields: `val_accuracy`, `test_accuracy`, `base_model`
 
 **Why FP32?**:
-- Full 32-bit floating point precision
-- No quantization accuracy loss
+- Full 32-bit floating point precision for maximum accuracy
+- No quantization accuracy loss (maintains 90.875% validation accuracy)
 - Already present in project (no download needed)
 - Better for testing and validation
+- Ideal when accuracy is prioritized over load time
 
 **Trade-offs**:
 - ⚠️ Larger file size: ~17.8 MB vs ~3.2 MB (INT8)
 - ⚠️ Slower load time on 3G: 20-40 seconds
 - ⚠️ Higher memory usage: ~20-30 MB RAM during inference
 - ⚠️ May stress low-end devices (2GB RAM Android phones)
+
+### Backup Option: INT8 Model
+If you experience performance issues on low-end devices:
+- File: `rice_model_v3.onnx` (~3.2 MB)
+- Update metadata: Change `model_filename`, `quantization`, and `model_size_mb`
+- Use case: Production optimization for slower networks or limited RAM
 
 ---
 
@@ -94,7 +101,22 @@ if (import.meta.env.DEV) {
 
 ## 🔄 REQUIRED ACTIONS BEFORE DEPLOYMENT
 
-### Action 1: Generate PWA Icons (URGENT)
+### Action 1: Verify FP32 Model Exists (URGENT)
+**Current State**: Should have `rice_model_v3_fp32.onnx` in project  
+**Required**: Confirm file exists and is ~17.8 MB
+
+**Steps**:
+```bash
+# Verify file exists and size:
+ls -lh public/models/rice_model_v3_fp32.onnx
+# Expected: ~17.8 MB
+
+# If missing, copy from Google Drive:
+# Source: /content/drive/MyDrive/rice_project_models_v3/rice_model_v3_fp32.onnx
+# Destination: c:\Argho\Projects\Dhan gobeshona\rice-ai-app\public\models\rice_model_v3_fp32.onnx
+```
+
+### Action 2: Generate PWA Icons (URGENT)
 **Current State**: Missing `pwa-192x192.png` and `pwa-512x512.png`  
 **Required**: Generate icons for home screen installation
 
@@ -124,7 +146,7 @@ ls public/pwa-*.png
 # pwa-512x512.png
 ```
 
-### Action 2: Run Full Test Suite
+### Action 3: Run Full Test Suite
 ```bash
 # 1. Install dependencies
 npm install
@@ -137,14 +159,14 @@ npm run dev
 #    ✅ "Model loaded successfully!"
 #    ✅ "CORRECT: Raw 0-255 values" (in dev mode)
 #    ✅ No errors or warnings
-#    ⏱️ Note model load time (should be < 3s on WiFi)
+#    ⏱️ Note model load time (should be < 3s on WiFi for FP32)
 
 # 5. Test camera functionality
 # 6. Test image classification
 # 7. Verify confidence scores display correctly
 ```
 
-### Action 3: Build & Preview Production
+### Action 4: Build & Preview Production
 ```bash
 # Build for production
 npm run build
@@ -157,10 +179,10 @@ npm run preview
 # - Service Worker registers (DevTools → Application → Service Workers)
 # - ONNX model loads once then serves from cache (~17.8 MB download)
 # - App works offline after first load
-# - Total cache size < 30 MB
+# - Total cache size < 25 MB
 ```
 
-### Action 4: Mobile Testing (Critical for FP32)
+### Action 5: Mobile Testing (Critical for FP32)
 Test on actual mobile devices before deployment:
 
 **Test Scenarios**:
@@ -177,7 +199,7 @@ Test on actual mobile devices before deployment:
 
 **If issues occur**: Consider switching to INT8 model (~3.2 MB). See README.md "Future Optimization Options".
 
-### Action 5: Deploy to Vercel
+### Action 6: Deploy to Vercel
 ```bash
 # Install Vercel CLI (if not already installed)
 npm install -g vercel
@@ -213,7 +235,7 @@ vercel --prod
 | Model Load Time (WiFi) | < 3s | < 5s | 17.8 MB download |
 | Model Load Time (4G) | < 10s | < 15s | Depends on signal |
 | Model Load Time (3G) | < 30s | < 45s | May vary significantly |
-| Inference Time | < 150ms | < 200ms | EfficientNet-B0 |
+| Inference Time | < 150ms | < 200ms | EfficientNet-B0 FP32 |
 | Accuracy (Overall) | 90.88% | ±2% | Validation accuracy |
 | Accuracy (Blast) | > 89% | > 87% | Improved over V2 |
 | Accuracy (Healthy) | > 94% | > 92% | Significantly improved |
@@ -277,21 +299,23 @@ Error: "Protobuf parsing failed"
 1. ✅ [`public/models/metadata_rice_v3.json`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\public\models\metadata_rice_v3.json)
    - Changed `model_filename` to FP32 version
    - Updated quantization to "FP32"
-   - Added missing metadata fields
+   - Updated model_size_mb to 17.8
+   - Enhanced preprocessing_note
 
-2. ✅ [`src/hooks/useClassifier.js`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\src\hooks\useClassifier.js)
-   - Added preprocessing debug verification (dev mode only)
-   - No functional changes to inference logic
+2. ✅ [`index.html`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\index.html)
+   - Updated theme-color to #16a34a
+   - Improved SEO description
 
-3. ✅ [`README.md`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\README.md)
-   - Updated to V3 architecture (EfficientNet-B0)
-   - Changed model references to FP32
+3. ✅ [`vite.config.js`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\vite.config.js)
+   - Added PWA icon files to includeAssets
+   - Updated theme_color to #16a34a
+   - Updated background_color to #f0fdf4
+
+4. ✅ [`README.md`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\README.md)
+   - Updated to V3.1 audited architecture
+   - Changed model references to FP32 production
    - Updated performance metrics and troubleshooting
-
-4. ✅ [`DEPLOYMENT_CHECKLIST.md`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\DEPLOYMENT_CHECKLIST.md)
-   - Adjusted for FP32 model size and performance
-   - Added mobile testing guidelines
-   - Updated performance benchmarks
+   - Added critical rules and gotchas table
 
 5. ✅ [`PROJECT_STATUS.md`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\PROJECT_STATUS.md) (this file)
    - Current status overview
@@ -324,6 +348,7 @@ Before deploying to production, ensure ALL items are checked:
 ## 🎯 NEXT STEPS
 
 1. **Immediate** (Today):
+   - [ ] Verify FP32 model exists in `public/models/`
    - [ ] Generate PWA icons using HTML generator
    - [ ] Run local tests (`npm run dev`)
    - [ ] Test on at least one mobile device
@@ -336,6 +361,7 @@ Before deploying to production, ensure ALL items are checked:
 
 3. **Long-term** (Future Iterations):
    - [ ] Consider INT8 optimization if load times are problematic
+   - [ ] Resume Phase 2 training to potentially reach 91-93% accuracy
    - [ ] Add more disease classes (if new data available)
    - [ ] Implement user feedback loop for misclassifications
    - [ ] Add multi-crop support (wheat, maize, etc.)
@@ -390,9 +416,8 @@ Add analytics to track:
 
 **Questions?** Refer to:
 - [`README.md`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\README.md) for complete technical details
-- [`DEPLOYMENT_CHECKLIST.md`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\DEPLOYMENT_CHECKLIST.md) for step-by-step deployment
 - [`RETRAINING_GUIDE.md`](c:\Argho\Projects\Dhan gobeshona\rice-ai-app\RETRAINING_GUIDE.md) for future model updates
 
 ---
 
-*Last Updated: 2026-04-28 | Maintained by: Rice AI Project Team*
+*Last Updated: 2026-04-28 | V3.1 Audited & Corrected | Maintained by: Adnan Eram Argho*

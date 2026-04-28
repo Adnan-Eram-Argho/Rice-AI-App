@@ -7,13 +7,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'robots.txt'],
+      includeAssets: ['favicon.svg', 'robots.txt', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'ধান চিকিৎসা | Rice AI Doctor',
         short_name: 'RiceAI',
         description: 'Offline rice disease diagnosis for Bangladeshi farmers',
-        theme_color: '#10b981',
-        background_color: '#ffffff',
+        theme_color: '#16a34a',
+        background_color: '#f0fdf4',
         display: 'standalone',
         icons: [
           { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
