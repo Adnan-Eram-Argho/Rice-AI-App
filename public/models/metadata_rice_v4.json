@@ -1,0 +1,30 @@
+{
+  "crop_id": "rice",
+  "model_version": "v4",
+  "model_filename": "rice_model_v4.onnx",
+  "input_name": "input",
+  "input_shape": [
+    1,
+    224,
+    224,
+    3
+  ],
+  "output_name": "rice_output",
+  "input_format": "NHWC",
+  "normalization": "raw_0_255",
+  "confidence_threshold": 0.75,
+  "classes": {
+    "0": "Blast",
+    "1": "Brown_Spot",
+    "2": "Healthy",
+    "3": "Leaf_Scald",
+    "4": "Background"
+  },
+  "quantization": "Static_INT8",
+  "model_size_mb": 5.61,
+  "base_model": "EfficientNet-B0 + CBAM",
+  "loss_function": "Focal_Loss(gamma=2.0, alpha=class_weights)",
+  "preprocessing_note": "Resize 224x224, RAW 0-255 values (NO division), NHWC format. EfficientNet has internal norm layer.",
+  "val_accuracy": 94.0577,
+  "test_accuracy": 94.0577
+}
