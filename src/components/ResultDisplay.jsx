@@ -3,9 +3,19 @@ export default function ResultDisplay({ result, lang, onBack }) {
 
   const isConfident = result.confident
   const percentage = (result.confidence * 100).toFixed(0)
+  
+  // 🌟 NEW: Check if the predicted class is Background
+  const isBackground = result.class === 'Background'
 
-  // Determine dynamic styling based on AI confidence
-  const theme = isConfident ? {
+  // Determine dynamic styling based on AI confidence OR Background class
+  const theme = isBackground ? {
+    cardBorder: 'border-slate-200',
+    cardShadow: 'shadow-xl shadow-slate-500/10',
+    heroAccent: 'text-slate-600',
+    barGradient: 'from-slate-400 to-slate-500',
+    buttonSolid: 'bg-gradient-to-r from-slate-500 to-slate-600 hover:from-slate-600 hover:to-slate-700 text-white shadow-lg shadow-slate-500/30',
+    buttonOutline: 'border-2 border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+  } : isConfident ? {
     cardBorder: 'border-emerald-200',
     cardShadow: 'shadow-xl shadow-emerald-500/10',
     heroAccent: 'text-emerald-600',
@@ -28,11 +38,11 @@ export default function ResultDisplay({ result, lang, onBack }) {
     <div className="absolute inset-0 z-20 flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/20 animate-fade-in-up overflow-hidden">
       
       {/* Dynamic Background Radial Glow */}
-      <div className={`absolute top-1/4 left-1/2 -translate-x-1/2 w-[90vw] h-[90vw] rounded-full blur-[130px] pointer-events-none transition-colors duration-1000 ${isConfident ? 'bg-emerald-200/30' : 'bg-amber-200/20'}`}></div>
+      <div className={`absolute top-1/4 left-1/2 -translate-x-1/2 w-[90vw] h-[90vw] rounded-full blur-[130px] pointer-events-none transition-colors duration-1000 ${isBackground ? 'bg-slate-200/30' : isConfident ? 'bg-emerald-200/30' : 'bg-amber-200/20'}`}></div>
 
       <div className="flex-1 overflow-y-auto pb-28 relative z-10 w-full">
 
-      {/* Top Header - Modern Clean Design */}
+      {/* Top Header */}
       <div className="sticky top-0 z-30 flex items-center p-4 bg-white/80 backdrop-blur-xl border-b border-slate-200">
         <button onClick={onBack} className="p-2 mr-3 rounded-xl hover:bg-slate-100 transition-colors text-slate-700 active:scale-95">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
@@ -44,10 +54,19 @@ export default function ResultDisplay({ result, lang, onBack }) {
 
       <div className="p-4 flex flex-col gap-5 max-w-lg mx-auto w-full mt-2 relative z-10">
         
-        {/* Main Hero Result Card - Modern Design */}
+        {/* Main Hero Result Card */}
         <div className={`bg-white rounded-3xl p-6 border ${theme.cardBorder} ${theme.cardShadow} animate-scale-in relative overflow-hidden transition-all duration-500`}>
           
-          {!isConfident && (
+          {/* Warning Banners */}
+          {isBackground && (
+            <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-slate-500/20 via-slate-400/15 to-slate-500/20 border-b border-slate-200 p-3 text-center">
+              <p className="text-slate-700 text-sm font-semibold tracking-wide flex items-center justify-center gap-2">
+                <span className="text-lg">🚫</span> {lang === 'bn' ? 'ধানের পাতা শনাক্ত হয়নি' : 'No Rice Leaf Detected'}
+              </p>
+            </div>
+          )}
+
+          {!isConfident && !isBackground && (
             <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-amber-500/20 border-b border-amber-200 p-3 text-center">
               <p className="text-amber-700 text-sm font-semibold tracking-wide flex items-center justify-center gap-2">
                 <span className="text-lg">⚠️</span> {lang === 'bn' ? 'নিশ্চিত নয় — কৃষি কর্মকর্তার পরামর্শ নিন' : 'Uncertain — Please consult an agriculture officer'}
@@ -55,8 +74,12 @@ export default function ResultDisplay({ result, lang, onBack }) {
             </div>
           )}
 
-          <div className={`flex flex-col items-center text-center ${!isConfident ? 'mt-8' : ''}`}>
-            {result.data ? (
+          <div className={`flex flex-col items-center text-center ${(isBackground || !isConfident) ? 'mt-8' : ''}`}>
+            {isBackground ? (
+              <h1 className="text-3xl md:text-4xl font-black text-slate-800 mb-2 leading-tight">
+                {lang === 'bn' ? 'ধানের পাতা নয়' : 'Not a Rice Leaf'}
+              </h1>
+            ) : result.data ? (
               <>
                 <h1 className="text-3xl md:text-4xl font-black text-slate-900 mb-2 leading-tight">
                   {lang === 'bn' ? result.data.name_bn : result.data.name_en}
@@ -72,7 +95,7 @@ export default function ResultDisplay({ result, lang, onBack }) {
             )}
 
             <div className="flex items-baseline gap-1 mb-5">
-              <span className={`text-[72px] leading-none font-black tracking-tighter ${theme.heroAccent}`} style={{ textShadow: `0 2px 20px ${isConfident ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}` }}>
+              <span className={`text-[72px] leading-none font-black tracking-tighter ${theme.heroAccent}`} style={{ textShadow: `0 2px 20px ${isBackground ? 'rgba(100,116,139,0.2)' : isConfident ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}` }}>
                 {percentage}
               </span>
               <span className="text-3xl text-slate-400 font-bold">%</span>
@@ -87,13 +110,15 @@ export default function ResultDisplay({ result, lang, onBack }) {
               </div>
             </div>
             <p className="text-xs text-slate-500 uppercase tracking-[0.15em] font-bold mt-3">
-              {lang === 'bn' ? 'আস্থার স্তর' : 'Confidence Level'}
+              {isBackground 
+                ? (lang === 'bn' ? 'পাতা না হওয়ার সম্ভাবনা' : 'Non-leaf Probability') 
+                : (lang === 'bn' ? 'আস্থার স্তর' : 'Confidence Level')}
             </p>
           </div>
         </div>
 
-        {/* Info Sections - Modern Cards */}
-        {result.data ? (
+        {/* Info Sections - Show only if it's a disease/healthy AND NOT Background */}
+        {!isBackground && result.data ? (
           <div className="flex flex-col gap-4 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
             
             {/* Symptoms Card */}
@@ -135,6 +160,12 @@ export default function ResultDisplay({ result, lang, onBack }) {
             </div>
             
           </div>
+        ) : isBackground ? (
+           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-lg text-center animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+              <p className="text-slate-600 text-[15px] leading-relaxed font-medium">
+                {lang === 'bn' ? 'অনুগ্রহ করে স্পষ্ট ধানের পাতার ছবি ক্যামেরার ফ্রেমের মধ্যে রেখে আবার স্ক্যান করুন।' : 'Please scan again keeping a clear rice leaf inside the camera frame.'}
+              </p>
+           </div>
         ) : (
            <div className="bg-white rounded-2xl p-6 border border-amber-200 shadow-lg text-center animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
               <p className="text-amber-700 text-[15px] leading-relaxed font-medium">
@@ -146,7 +177,7 @@ export default function ResultDisplay({ result, lang, onBack }) {
 
       </div>
 
-      {/* Bottom Action Bar - Modern Floating Buttons */}
+      {/* Bottom Action Bar */}
       <div className="absolute bottom-0 left-0 right-0 p-4 pt-12 bg-gradient-to-t from-white via-white/95 to-transparent z-40 pointer-events-none">
         <div className="max-w-lg mx-auto flex gap-4 pointer-events-auto">
           <button 

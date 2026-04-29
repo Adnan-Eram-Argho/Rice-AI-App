@@ -17,20 +17,15 @@ export default function useClassifier(cropId) {
         setIsLoading(true)
         setError(null)
 
-        // Configure ONNX Runtime
-        ort.env.wasm.numThreads = 1 // Use single thread for better compatibility
-        ort.env.wasm.simd = true // Enable SIMD for performance
+        ort.env.wasm.numThreads = 1 
+        ort.env.wasm.simd = true 
         
-        console.log('🔄 Loading crop config...')
-        // 1. Fetch crop config dynamically
         const configRes = await fetch('/config/crops_config.json')
         if (!configRes.ok) throw new Error(`Failed to load crops_config.json: ${configRes.status}`)
         const config = await configRes.json()
         const crop = config.crops[cropId]
         if (!crop) throw new Error(`Crop "${cropId}" not configured`)
 
-        console.log('📦 Loading metadata and disease data...')
-        // 2. Fetch metadata & disease data
         const [metaRes, diseaseRes] = await Promise.all([
           fetch(`/models/${crop.current_metadata_file}`),
           fetch(`/data/${crop.diseases_data_file}`)
@@ -49,10 +44,8 @@ export default function useClassifier(cropId) {
           setThreshold(meta.confidence_threshold)
         }
 
-        console.log('🤖 Loading ONNX model:', `/models/${meta.model_filename}`)
-        // 3. Initialize ONNX session with explicit options
         const sess = await ort.InferenceSession.create(`/models/${meta.model_filename}`, {
-          executionProviders: ['wasm'], // Explicitly use WASM backend
+          executionProviders: ['wasm'],
           graphOptimizationLevel: 'all'
         })
         
@@ -72,12 +65,10 @@ export default function useClassifier(cropId) {
       isMounted = false
       if (sessionRef.current) {
         sessionRef.current.release()
-        console.log('🗑️ Model released')
       }
     }
   }, [cropId])
 
-  // Preprocess + Inference
   const classify = useCallback(async (imgElement) => {
     if (!sessionRef.current || !classes) {
       console.error('Model not ready for classification')
@@ -85,40 +76,35 @@ export default function useClassifier(cropId) {
     }
 
     try {
-      // Canvas resize to 224x224
       const canvas = document.createElement('canvas')
       canvas.width = canvas.height = 224
-      const ctx = canvas.getContext('2d')
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
       ctx.drawImage(imgElement, 0, 0, 224, 224)
       
       // Extract pixels [0,255] → NHWC (NO DIVISION)
-const { data } = ctx.getImageData(0, 0, 224, 224)
-const tensorData = new Float32Array(224 * 224 * 3)
-let idx = 0
-for (let i = 0; i < data.length; i += 4) {
-  tensorData[idx++] = data[i]                // ✅ Raw R (0-255)
-  tensorData[idx++] = data[i+1]              // ✅ Raw G (0-255)
-  tensorData[idx++] = data[i+2]              // ✅ Raw B (0-255)
-  // Skip alpha: data[i+3]
-}
+      const { data } = ctx.getImageData(0, 0, 224, 224)
+      const tensorData = new Float32Array(224 * 224 * 3)
+      let idx = 0
+      for (let i = 0; i < data.length; i += 4) {
+        tensorData[idx++] = data[i]                // ✅ Raw R (0-255)
+        tensorData[idx++] = data[i+1]              // ✅ Raw G (0-255)
+        tensorData[idx++] = data[i+2]              // ✅ Raw B (0-255)
+      }
 
-// 🔍 Preprocessing debug check (first pixel value)
-if (import.meta.env.DEV) {
-  const sampleVal = tensorData[0]
-  if (sampleVal > 1.0 && sampleVal <= 255.0) {
-    console.log('✅ CORRECT: Raw 0-255 values (matches training)')
-  } else if (sampleVal <= 1.0) {
-    console.error('❌ WRONG: Values in [0,1] range — remove /255.0 division')
-  }
-}
+      if (import.meta.env.DEV) {
+        const sampleVal = tensorData[0]
+        if (sampleVal > 1.0 && sampleVal <= 255.0) {
+          console.log('✅ CORRECT: Raw 0-255 values (matches training)')
+        } else if (sampleVal <= 1.0) {
+          console.error('❌ WRONG: Values in [0,1] range — remove /255.0 division')
+        }
+      }
 
       const inputTensor = new ort.Tensor('float32', tensorData, [1, 224, 224, 3])
       const feeds = { [sessionRef.current.inputNames[0]]: inputTensor }
       
-      console.log('🔍 Running inference...')
       const results = await sessionRef.current.run(feeds)
       
-      // Find max probability
       const probs = Array.from(results[sessionRef.current.outputNames[0]].data)
       let maxIdx = 0, maxConf = probs[0]
       for (let i = 1; i < probs.length; i++) {

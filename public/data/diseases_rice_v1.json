@@ -30,5 +30,13 @@
     "symptoms_en": "Dark green leaves, no spots, cracks, or discoloration. Plant stands straight and strong.",
     "treatment_bn": "নিয়মিত সেচ ও সুষম সার প্রয়োগ চলমান রাখুন। কীটপতঙ্গ পর্যবেক্ষণ করুন। সময়মতো আগাছা পরিষ্কার করুন।",
     "treatment_en": "Maintain regular irrigation & balanced fertilization. Monitor for pests. Clear weeds on time."
+  },
+  "Background": {
+    "name_bn": "ধানের পাতা নয়",
+    "name_en": "Not a Rice Leaf",
+    "symptoms_bn": "ছবিতে কোনো ধানের পাতা শনাক্ত করা যায়নি। এটি মাটি, আকাশ, মানুষ বা অন্য কোনো বস্তু হতে পারে।",
+    "symptoms_en": "No rice leaf detected in the image. It might be soil, sky, a person, or another object.",
+    "treatment_bn": "অনুগ্রহ করে স্পষ্ট ধানের পাতার ছবি ক্যামেরার ফ্রেমের মধ্যে রেখে আবার স্ক্যান করুন।",
+    "treatment_en": "Please scan again keeping a clear rice leaf inside the camera frame."
   }
 }
