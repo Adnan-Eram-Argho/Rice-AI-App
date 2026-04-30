@@ -3,9 +3,46 @@ export default function ResultDisplay({ result, lang, onBack }) {
 
   const isConfident = result.confident
   const percentage = (result.confidence * 100).toFixed(0)
-  
-  // 🌟 NEW: Check if the predicted class is Background
   const isBackground = result.class === 'Background'
+  
+  // 🌟 CHANGE: Handle Invalid/Blurry Images
+  const isInvalidImage = result.class === 'InvalidImage'
+
+  // If image is invalid (Blurry, Dark, No leaf) -> Show this specific screen
+  if (isInvalidImage) {
+    return (
+      <div className="absolute inset-0 z-20 flex flex-col bg-gradient-to-br from-slate-50 via-white to-red-50/20 animate-fade-in-up overflow-hidden">
+        <div className="sticky top-0 z-30 flex items-center p-4 bg-white/80 backdrop-blur-xl border-b border-slate-200">
+          <button onClick={onBack} className="p-2 mr-3 rounded-xl hover:bg-slate-100 text-slate-700 active:scale-95">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+          </button>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            {lang === 'bn' ? 'ছবির সমস্যা' : 'Image Issue'}
+          </h2>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-24 h-24 rounded-full bg-red-100 flex items-center justify-center mb-6 animate-bounce">
+            <span className="text-5xl">📷</span>
+          </div>
+          <h1 className="text-2xl font-bold text-red-600 mb-4">
+            {lang === 'bn' ? 'ছবি পরিষ্কার নয়!' : 'Unclear Image!'}
+          </h1>
+          <p className="text-slate-600 text-lg leading-relaxed mb-8 max-w-sm">
+            {result.qualityError?.bn || result.qualityError?.en}
+          </p>
+          
+          <button 
+            onClick={onBack}
+            className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-lg shadow-emerald-500/30 active:scale-95 transition-transform flex items-center gap-2"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /></svg>
+            {lang === 'bn' ? 'আবার ছবি তুলুন' : 'Take Photo Again'}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // Determine dynamic styling based on AI confidence OR Background class
   const theme = isBackground ? {

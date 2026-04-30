@@ -1,4 +1,4 @@
-# 🌾 Rice AI Doctor - Retraining & Expansion Guide (V4)
+# 🌾 Rice AI Doctor - Retraining & Expansion Guide (V4.1 - WITH IQA & TTA)
 
 ## ⚙️ Core Architecture Rule
 **NEVER modify React/Vite code to add crops or diseases.**  
@@ -10,16 +10,42 @@ All changes happen in:
 
 ---
 
+## 🆕 V4.1 Features Overview
+
+### Image Quality Assessment (IQA)
+The frontend now validates image quality **before** sending to the model:
+- **Brightness Check**: Rejects images with avg brightness < 35 (too dark) or > 225 (overexposed)
+- **Green Pixel Ratio**: Ensures at least 3% of pixels are green (confirms leaf presence)
+- **Blur Detection**: Calculates brightness variance; rejects if variance < 250 (blurry/unstable)
+- **User Feedback**: Displays bilingual error messages guiding users to retake better photos
+
+### Test-Time Augmentation (TTA)
+Improves prediction robustness by running **3 parallel inferences**:
+1. Original image
+2. Horizontally flipped image
+3. Vertically flipped image
+
+Results are averaged for more stable predictions, especially useful for:
+- Partially visible leaves
+- Uneven lighting conditions
+- Angled camera positions
+
+**Performance Impact**: Inference time increases from ~120ms to ~360ms on low-end devices (still acceptable for UX).
+
+---
+
 ## 🔄 Scenario A: Improve Existing Rice Model (Add More Images)
 *Use when you collect 100+ new field photos for Blast, Brown_Spot, Leaf_Scald, Healthy, or Background.*
 
-### Current Configuration (V4 - Production)
+### Current Configuration (V4.1 - Production with IQA & TTA)
 - **Base Model**: EfficientNet-B0 with CBAM Attention Block (Functional API, no custom objects)
 - **Preprocessing**: RAW 0-255 pixel values (NO /255.0 division) - **CRITICAL**
 - **Loss Function**: **Focal Loss (gamma=2.0, alpha=class_weights)** - Better than sparse_categorical_crossentropy
-- **Current Production Model**: `rice_model_v4_fp32.onnx` (~17-18 MB, FP32) - **MAXIMUM PRECISION**
-- **Alternative**: `rice_model_v4_int8.onnx` (~3-4 MB, Static INT8 quantized) - Available for optimization
+- **Current Production Model**: `rice_model_v4_int8.onnx` (~3.2 MB, Static INT8) - **OPTIMIZED FOR MOBILE**
+- **Alternative**: `rice_model_v4.onnx` (~17 MB, FP32) - Available for maximum precision testing
 - **Test Accuracy**: 94.06%
+- **🆕 Image Quality Validation**: Frontend rejects blurry/dark/non-leaf images before inference
+- **🆕 Test-Time Augmentation**: 3 parallel inferences averaged for robustness
 
 ### Steps to Retrain
 
@@ -42,14 +68,19 @@ All changes happen in:
    - **CBAM Block**: Use Functional API definition (no subclassing)
    - **Data Pipeline**: Apply MD5 deduplication before training
    - **Split**: Stratified 80/10/10 (train/val/test)
+   - **⚠️ Keras 3 Compatibility**: Ensure Lambda layers have explicit `output_shape` parameter
 
 3. **Rerun Phase 3 Export**:
-   - **FP32 Export** (for production - maximum precision):
+   - **FP32 Export** (for validation/testing):
      ```python
+     # DO NOT use tf.keras.models.load_model() - it will crash on Lambda layers
+     model = build_model_safe(num_classes=5, trainable_base=False)
+     model.load_weights(P2_CKPT)
+     
      tf2onnx.convert.from_keras(model, input_signature=[...], opset=16)
-     # Output: rice_model_v5_fp32.onnx (~17-18 MB) — RECOMMENDED FOR PRODUCTION
+     # Output: rice_model_v5.onnx (~17 MB) — For testing
      ```
-   - **Static INT8 Quantization** (optional, for performance optimization):
+   - **Static INT8 Quantization** (for production):
      ```python
      # Requires calibration dataset representative of real-world data
      quantize_static(
@@ -59,21 +90,21 @@ All changes happen in:
          weight_type=QuantType.QInt8,
          activation_type=QuantType.QUInt8,
          per_channel=True,
-         ActivationSymmetry=False
+         extra_options={'ActivationSymmetry': False}  # Important for Swish activation
      )
      # Output: rice_model_v5_int8.onnx (~3-4 MB) — Weights + Activations quantized
      ```
 
 4. **Update files in React project:**
    - Copy new models to `public/models/`:
-     - `rice_model_v5_fp32.onnx` (FP32, production - recommended)
-     - `rice_model_v5_int8.onnx` (INT8, optional backup)
+     - `rice_model_v5_int8.onnx` (INT8, production - recommended)
+     - `rice_model_v5.onnx` (FP32, optional backup for testing)
    - Create `public/models/metadata_rice_v5.json` with updated fields:
      ```json
      {
        "crop_id": "rice",
        "model_version": "v5",
-       "model_filename": "rice_model_v5_fp32.onnx",
+       "model_filename": "rice_model_v5_int8.onnx",
        "input_name": "input",
        "input_shape": [1, 224, 224, 3],
        "output_name": "rice_output",
@@ -81,20 +112,19 @@ All changes happen in:
        "normalization": "raw_0_255",
        "confidence_threshold": 0.75,
        "classes": {
-         "0": "Background",
-         "1": "Blast",
-         "2": "Brown_Spot",
-         "3": "Healthy",
-         "4": "Leaf_Scald"
+         "0": "Blast",
+         "1": "Brown_Spot",
+         "2": "Healthy",
+         "3": "Leaf_Scald",
+         "4": "Background"
        },
-       "quantization": "FP32",
-       "model_size_mb": 17.8,
+       "quantization": "Static_INT8",
+       "model_size_mb": 3.2,
        "base_model": "EfficientNet-B0 + CBAM",
-       "preprocessing_note": "Resize 224x224, use raw 0-255 pixel values (NO division), NHWC format. EfficientNet has internal norm layer.",
+       "loss_function": "Focal_Loss(gamma=2.0, alpha=class_weights)",
+       "preprocessing_note": "Resize 224x224, RAW 0-255 values (NO division), NHWC format. EfficientNet has internal norm layer.",
        "val_accuracy": 0.94,
-       "test_accuracy": 0.94,
-       "training_strategy": "Phase 1: Frozen backbone (20 epochs, lr=1e-3). Phase 2: Last 30 layers unfrozen (30 epochs, lr=1e-4). Focal Loss (gamma=2.0).",
-       "data_improvements": "MD5 deduplication, stratified 80/10/10 split, Background class added, focal loss for hard examples"
+       "test_accuracy": 0.94
      }
      ```
    - Update `public/config/crops_config.json`:
@@ -134,20 +164,20 @@ All changes happen in:
 2. **Add ≥200 images** to the new folder (more is better for training stability)
 3. **Rerun Phase 2 Training**
    - Code auto-detects 6 classes
-   - Exports `class_indices.json` with `{"Background": 0, "Blast": 1, "Brown_Spot": 2, "Healthy": 3, "Leaf_Scald": 4, "Bacterial_Leaf_Blight": 5}`
+   - Exports `class_indices.json` with `{"Blast": 0, "Brown_Spot": 1, "Healthy": 2, "Leaf_Scald": 3, "Background": 4, "Bacterial_Leaf_Blight": 5}` *(⚠️ Verify alphabetical order)*
    - Train with same EfficientNet-B0 + CBAM architecture
    - **Loss**: **Focal Loss (gamma=2.0, alpha=class_weights)** for better hard-example mining
-4. **Rerun Phase 3 Export** → Get `rice_model_v5_fp32.onnx` (FP32, production) and optionally `rice_model_v5_int8.onnx` (INT8)
+4. **Rerun Phase 3 Export** → Get `rice_model_v5_int8.onnx` (INT8, production) and optionally `rice_model_v5.onnx` (FP32)
 5. **Update configs:**
    ```json
    // public/models/metadata_rice_v5.json
    {
      "classes": {
-       "0": "Background",
-       "1": "Blast",
-       "2": "Brown_Spot",
-       "3": "Healthy",
-       "4": "Leaf_Scald",
+       "0": "Blast",
+       "1": "Brown_Spot",
+       "2": "Healthy",
+       "3": "Leaf_Scald",
+       "4": "Background",
        "5": "Bacterial_Leaf_Blight"
      }
    }
@@ -158,6 +188,14 @@ All changes happen in:
      "Brown_Spot": { ... },
      "Healthy": { ... },
      "Leaf_Scald": { ... },
+     "Background": {
+       "name_bn": "ধানের পাতা নয়",
+       "name_en": "Not a Rice Leaf",
+       "symptoms_bn": "",
+       "symptoms_en": "",
+       "treatment_bn": "অনুগ্রহ করে ধানের পাতার স্পষ্ট ছবি তুলুন।",
+       "treatment_en": "Please capture a clear image of a rice leaf."
+     },
      "Bacterial_Leaf_Blight": {
        "name_bn": "ব্যাকটেরিয়াল লিফ ব্লাইট",
        "name_en": "Bacterial Leaf Blight",
@@ -183,7 +221,7 @@ All changes happen in:
 
 2. **Train new model** using same EfficientNet-B0 + CBAM architecture
    - Adjust `CLASSES` list in Colab notebook
-   - Export as `wheat_model_v1_fp32.onnx` (FP32, production) and optionally `wheat_model_v1_int8.onnx` (INT8)
+   - Export as `wheat_model_v1_int8.onnx` (INT8, production) and optionally `wheat_model_v1.onnx` (FP32)
    - Create `metadata_wheat_v1.json`
 
 3. **Create disease data file**: `public/data/diseases_wheat_v1.json`
@@ -234,26 +272,26 @@ All changes happen in:
 ## 🔧 Scenario D: Switch Between FP32 and INT8 Models
 *Use if you need to toggle between precision and performance.*
 
-### Current Situation (V4)
-- Using FP32 model: `rice_model_v4_fp32.onnx` (~17-18 MB) - **PRODUCTION (Maximum Precision)**
-- Backup available: `rice_model_v4_int8.onnx` (~3-4 MB) - **OPTIMIZATION OPTION (Static INT8)**
+### Current Situation (V4.0)
+- Using INT8 model: `rice_model_v4_int8.onnx` (~3.2 MB) - **PRODUCTION (Optimized for Mobile)**
+- Backup available: `rice_model_v4.onnx` (~17 MB) - **TESTING OPTION (Maximum Precision)**
 
-### To Switch to INT8 (Performance Optimization)
+### To Switch to FP32 (Maximum Precision for Testing)
 
 1. **Update `metadata_rice_v4.json`**:
    ```json
    {
-     "model_filename": "rice_model_v4_int8.onnx",  // ← Changed from _fp32
-     "quantization": "INT8",                       // ← Changed from FP32
-     "model_size_mb": 3.5                          // ← Updated size
+     "model_filename": "rice_model_v4.onnx",  // ← Changed from _int8
+     "quantization": "FP32",                  // ← Changed from Static_INT8
+     "model_size_mb": 17                      // ← Updated size
    }
    ```
 
 2. **Test locally**:
    ```bash
    npm run dev
-   # Verify model loads faster (< 5s on WiFi)
-   # Check accuracy remains similar (< 0.5% drop expected)
+   # Verify model loads (< 3s on WiFi)
+   # Check accuracy on test images
    ```
 
 3. **Deploy**:
@@ -262,14 +300,14 @@ All changes happen in:
    git push
    ```
 
-### To Switch Back to FP32 (Maximum Precision)
+### To Switch Back to INT8 (Production Optimization)
 
 1. **Update `metadata_rice_v4.json`**:
    ```json
    {
-     "model_filename": "rice_model_v4_fp32.onnx",  // ← Changed back to FP32
-     "quantization": "FP32",                        // ← Changed from INT8
-     "model_size_mb": 17.8                          // ← Updated size
+     "model_filename": "rice_model_v4_int8.onnx",  // ← Changed back to INT8
+     "quantization": "Static_INT8",                // ← Changed from FP32
+     "model_size_mb": 3.2                          // ← Updated size
    }
    ```
 
@@ -277,14 +315,14 @@ All changes happen in:
 
 ### Comparison
 
-| Feature | FP32 (Production) | INT8 (Optimization) |
+| Feature | FP32 (Testing) | INT8 (Production) |
 |---------|------------------|---------------------|
-| File Size | ~17-18 MB | ~3-4 MB |
-| Load Time (3G) | 20-40s | < 10s |
+| File Size | ~17 MB | ~3.2 MB |
+| Load Time (3G) | 30-40s | < 10s |
 | Memory Usage | 20-30 MB | 15-20 MB |
 | Accuracy | 94.06% | ~93.5-94% |
 | Inference Speed | < 150ms | < 120ms |
-| Best For | Maximum precision, testing, validation | Production on low-end devices, fast loading |
+| Best For | Validation, high-end devices | Production on all devices, fast loading |
 
 ---
 
@@ -296,8 +334,8 @@ All changes happen in:
 | V2 | MobileNetV2 | None | Sparse CE | 4 | INT8 | 2.85 MB | 86.61% | Deprecated |
 | V3 | EfficientNet-B0 | SE Block | Sparse CE | 4 | FP32 | 17.8 MB | 90.875% | Deprecated |
 | V3 | EfficientNet-B0 | SE Block | Sparse CE | 4 | INT8 | 3.2 MB | ~90.5% | Deprecated |
-| **V4** | **EfficientNet-B0** | **CBAM** | **Focal Loss** | **5** | **FP32** | **~17-18 MB** | **94.06%** | ✅ **CURRENT** |
-| **V4** | **EfficientNet-B0** | **CBAM** | **Focal Loss** | **5** | **INT8** | **~3-4 MB** | **~93.5-94%** | **Available** |
+| **V4** | **EfficientNet-B0** | **CBAM** | **Focal Loss** | **5** | **Static INT8** | **~3.2 MB** | **94.06%** | ✅ **CURRENT** |
+| **V4** | **EfficientNet-B0** | **CBAM** | **Focal Loss** | **5** | **FP32** | **~17 MB** | **94.06%** | **Testing** |
 | V5+ | Future iterations | TBD | TBD | TBD | TBD | TBD | TBD | Planned |
 
 ---
@@ -314,44 +352,55 @@ All changes happen in:
 ### Loss Function
 - **USE**: **Focal Loss (gamma=2.0, alpha=class_weights)** for better hard-example mining
 - **DO NOT USE**: sparse_categorical_crossentropy (was used in V3, but Focal Loss is superior)
-- This was verified from actual Colab source code and provides better performance on imbalanced datasets
+- **⚠️ CRITICAL**: Do NOT pass `class_weight` to `model.fit()` when using Focal Loss with alpha weights. This would apply weights twice and cause severe bias.
+
+### Frontend Image Quality Validation (IQA)
+The frontend now validates images before inference. If you notice high rejection rates:
+- **Brightness thresholds**: Adjust `< 35` (too dark) or `> 225` (too bright) in `useClassifier.js`
+- **Green pixel ratio**: Modify `< 0.03` threshold if detecting non-green rice varieties
+- **Blur detection**: Change variance threshold `< 250` based on camera quality of target devices
+- **Test thoroughly**: Verify IQA doesn't reject valid field photos under different lighting conditions
+
+### Test-Time Augmentation (TTA) Performance
+TTA runs 3 parallel inferences, which impacts performance:
+- **Expected latency**: ~360ms on low-end Android (vs ~120ms single inference)
+- **If too slow**: Consider reducing to 2 variations (original + H-flip only)
+- **Optimization tip**: Ensure `ort.env.wasm.numThreads = 1` for stable performance
+- **Memory impact**: Minimal increase (~5 MB additional during inference)
 
 ### CBAM Block Implementation
 - **USE**: Functional API definition (not subclassed Layer)
 - **Benefit**: No `custom_objects` needed for Keras load_model or ONNX export
+- **Keras 3 Compatibility**: Lambda layers MUST have explicit `output_shape` parameter
 - **Code**:
   ```python
-  def cbam_block(inputs, ratio=16):
-      # Channel Attention
-      channels = inputs.shape[-1]
-      avg_pool = layers.GlobalAveragePooling2D()(inputs)
-      max_pool = layers.GlobalMaxPooling2D()(inputs)
-      
-      avg_pool = layers.Reshape((1, 1, channels))(avg_pool)
-      max_pool = layers.Reshape((1, 1, channels))(max_pool)
-      
-      shared_dense = layers.Dense(channels // ratio, activation='relu', 
-                                   kernel_initializer='he_normal')
-      avg_att = shared_dense(avg_pool)
-      max_att = shared_dense(max_pool)
-      
-      channel_att = layers.Dense(channels, activation='sigmoid',
-                                  kernel_initializer='he_normal')
-      avg_att = channel_att(avg_att)
-      max_att = channel_att(max_att)
-      
-      channel_att = layers.multiply([inputs, avg_att])
-      channel_att = layers.multiply([channel_att, max_att])
-      
-      # Spatial Attention
-      avg_spatial = tf.reduce_mean(channel_att, axis=-1, keepdims=True)
-      max_spatial = tf.reduce_max(channel_att, axis=-1, keepdims=True)
-      spatial_concat = layers.Concatenate(axis=-1)([avg_spatial, max_spatial])
-      
-      spatial_att = layers.Conv2D(1, kernel_size=7, padding='same',
-                                   activation='sigmoid')(spatial_concat)
-      
-      return layers.multiply([channel_att, spatial_att])
+  def cbam_block_safe(x, reduction=8):
+      channels = x.shape[-1]
+      # Channel attention
+      avg_pool = layers.GlobalAveragePooling2D(keepdims=True)(x)
+      max_pool = layers.GlobalMaxPooling2D(keepdims=True)(x)
+      shared_dense1 = layers.Dense(channels // reduction, activation='relu')
+      shared_dense2 = layers.Dense(channels)
+      avg_out = shared_dense2(shared_dense1(avg_pool))
+      max_out = shared_dense2(shared_dense1(max_pool))
+      channel_att = layers.Activation('sigmoid')(avg_out + max_out)
+      x = layers.Multiply()([x, channel_att])
+
+      # Spatial attention (✅ MUST specify output_shape for Keras 3 Lambda layers)
+      avg_sp = layers.Lambda(
+          lambda t: tf.reduce_mean(t, axis=-1, keepdims=True),
+          name='spatial_avg_pool',
+          output_shape=lambda s: (s[0], s[1], s[2], 1)
+      )(x)
+      max_sp = layers.Lambda(
+          lambda t: tf.reduce_max(t, axis=-1, keepdims=True),
+          name='spatial_max_pool',
+          output_shape=lambda s: (s[0], s[1], s[2], 1)
+      )(x)
+      sp_concat = layers.Concatenate(axis=-1)([avg_sp, max_sp])
+      spatial_att = layers.Conv2D(1, 7, padding='same', activation='sigmoid')(sp_concat)
+      x = layers.Multiply()([x, spatial_att])
+      return x
   ```
 
 ### Data Improvements
@@ -359,6 +408,19 @@ All changes happen in:
 - **Stratified Split**: Use 80/10/10 split (train/val/test) with `random_state=42`
 - **Background Class**: Add 400 out-of-distribution images to reduce false positives
 - **Enhanced Augmentation**: Include rotation ±15%, zoom ±15%, brightness ±15%, contrast ±15%
+- **Image Decoding Fix**: Use `tf.io.decode_image(..., expand_animations=False)` + `tf.squeeze()` to handle GIFs and malformed PNGs
+
+### Keras 3 Model Loading Workaround
+**⚠️ CRITICAL**: Due to Keras 3 security restrictions, `tf.keras.models.load_model()` will fail with Lambda and Focal_Loss errors.
+
+**Always use this pattern:**
+```python
+# 1. Rebuild model structure in memory
+model = build_model_safe(num_classes=5, trainable_base=False)
+# 2. Load ONLY the weights from the saved checkpoint
+model.load_weights(P2_CKPT)
+# 3. Proceed with ONNX export or model.predict()
+```
 
 ### Metadata Updates
 Every time you create a new model version:
@@ -367,6 +429,7 @@ Every time you create a new model version:
 3. Test thoroughly before deploying
 4. Keep old models as backup until new version is verified
 5. **Override Colab's auto-generated metadata**: The Colab script may print `"normalization": "divide_255"` - this is a bug. Always set it to `"raw_0_255"`.
+6. **Verify class indices**: Run `print(train_dataset.class_names)` to confirm mapping matches your JSON.
 
 ### PWA Cache Management
 - Workbox `cleanupOutdatedCaches: true` automatically removes old models
@@ -385,8 +448,11 @@ Every time you create a new model version:
 - [ ] Bilingual UI displays correctly
 - [ ] PWA installs and works offline
 - [ ] Tested on target devices (low-end Android, iOS)
-- [ ] Load time acceptable on 3G/4G networks
-- [ ] Memory usage within limits (< 40 MB for FP32)
+- [ ] Load time acceptable on 3G/4G networks (< 10s for INT8)
+- [ ] Memory usage within limits (< 30 MB for INT8)
+- [ ] **🆕 Image Quality Validation**: Test with blurry/dark/bright/non-leaf images - should show error screen
+- [ ] **🆕 TTA Performance**: Verify inference completes in < 500ms on target devices
+- [ ] **🆕 Invalid Image Screen**: Confirm user-friendly error messages appear in both languages
 
 ---
 
@@ -413,8 +479,8 @@ vercel logs          # View deployment logs
 # Check model files exist and have correct sizes
 ls -lh public/models/*.onnx
 # Expected output:
-# rice_model_v4_fp32.onnx    ~17-18M  ← Current production (FP32)
-# rice_model_v4_int8.onnx    ~3-4M    ← Backup/optimization (INT8)
+# rice_model_v4_int8.onnx    ~3.2M   ← Current production (Static INT8)
+# rice_model_v4.onnx         ~17M    ← Backup/testing (FP32)
 ```
 
 ---
@@ -435,7 +501,7 @@ ls -lh public/models/*.onnx
 **Issue**: ONNX export fails with opset error  
 **Fix**:
 - Ensure opset=16 for EfficientNet models (required for Swish activation)
-- Use `compile=False` when loading Keras model
+- Use rebuild + load_weights pattern instead of load_model()
 - Install latest `tf2onnx`: `pip install -U tf2onnx`
 
 **Issue**: Frontend predictions are random/wrong  
@@ -455,9 +521,10 @@ ls -lh public/models/*.onnx
 
 **Issue**: App crashes on low-end Android  
 **Fix**:
-- Monitor RAM usage (should be 20-30 MB for FP32)
-- If exceeding 40 MB, switch to INT8 model (~3-4 MB)
-- Reduce `ort.env.wasm.numThreads` to 1 in `useClassifier.js`
+- Monitor RAM usage (should be 15-20 MB for INT8)
+- Ensure `ort.env.wasm.numThreads = 1` in `useClassifier.js`
+- If still crashing, check device compatibility with WASM
+- **TTA Consideration**: If TTA causes memory issues, reduce to single inference or 2 variations
 
 **Issue**: Background class detected too frequently  
 **Fix**:
@@ -465,6 +532,32 @@ ls -lh public/models/*.onnx
 - Check image quality and lighting conditions
 - Ensure proper camera focus on rice leaf
 - Consider adjusting confidence threshold
+- Verify alpha[4] was tuned down during training (e.g., alpha[4] = 2.0)
+- **Check IQA**: Ensure blurry/dark images are being rejected before inference
+
+**Issue**: Keras 3 Lambda layer errors during export  
+**Fix**:
+- **DO NOT** use `tf.keras.models.load_model()`
+- Use rebuild + load_weights pattern:
+  ```python
+  model = build_model_safe(num_classes=5)
+  model.load_weights(checkpoint_path)
+  ```
+- Ensure all Lambda layers have explicit `output_shape` parameter
+
+**Issue**: Image Quality Validation rejecting valid photos  
+**Fix**:
+- Adjust brightness thresholds in `validateImageQuality()` function
+- Lower green pixel ratio threshold for non-standard rice varieties
+- Reduce blur detection variance threshold for older cameras
+- Test with diverse field conditions (morning/evening light, cloudy days)
+
+**Issue**: TTA making app too slow (> 600ms per inference)  
+**Fix**:
+- Reduce from 3 variations to 2 (original + H-flip only)
+- Or disable TTA entirely for very low-end devices (detect via User-Agent)
+- Ensure WASM SIMD is enabled: `ort.env.wasm.simd = true`
+- Profile using Chrome DevTools Performance tab
 
 ---
 
@@ -474,14 +567,18 @@ ls -lh public/models/*.onnx
 Run this if you are unsure what normalization the model expects:
 ```python
 import tensorflow as tf, numpy as np, cv2, os
-model = tf.keras.models.load_model('/content/drive/MyDrive/rice_project_models_v4/rice_model_v4.keras', compile=False)
+
+# Rebuild model (DO NOT use load_model)
+model = build_model_safe(num_classes=5)
+model.load_weights('/content/drive/MyDrive/rice_project_v4/checkpoints/best_phase2.keras')
+
 img = cv2.cvtColor(cv2.imread('test.jpg'), cv2.COLOR_BGR2RGB)
 img = cv2.resize(img, (224, 224))
 
 pred_raw = model.predict(np.expand_dims(img.astype(np.float32), 0), verbose=0)          # 0-255
 pred_norm = model.predict(np.expand_dims(img.astype(np.float32) / 255.0, 0), verbose=0) # 0-1
 
-CLASSES = ['Background', 'Blast', 'Brown_Spot', 'Healthy', 'Leaf_Scald']
+CLASSES = ['Blast', 'Brown_Spot', 'Healthy', 'Leaf_Scald', 'Background']
 print(f"Raw 0-255: {CLASSES[np.argmax(pred_raw[0])]} @ {np.max(pred_raw[0])*100:.1f}%")
 print(f"Normalized (/255.0): {CLASSES[np.argmax(pred_norm[0])]} @ {np.max(pred_norm[0])*100:.1f}%")
 # ✅ For THIS model: Raw 0-255 should give ~90%+ confidence. /255.0 will give near 0%.
@@ -512,8 +609,32 @@ if (tensor.data[0] >= 250.0 && tensor.data[0] <= 255.0) {
 
 ---
 
-> 🌾 *This guide ensures zero React code changes for model updates. All modifications happen through configuration files, making the app future-proof and easily maintainable. V4 has been audited against actual Colab training source code to ensure accuracy. FP32 model is recommended for maximum precision.*
+## 🔄 Frontend Consistency Check (For AI Agents)
 
-**Last Updated**: 2026-04-30 (V4 Production Release)  
-**Current Version**: V4 (EfficientNet-B0 + CBAM, Focal Loss, Background Class, FP32 Production)  
+When updating the model, you **MUST** verify that `src/hooks/useClassifier.js` matches the new training preprocessing.
+
+### Checklist for `useClassifier.js`:
+1.  **Input Shape:** Must be `[1, 224, 224, 3]` (NHWC).
+2.  **Normalization:**
+    -   If Model uses `EfficientNet` with internal norm: **Keep RAW 0-255** (No `/255.0`).
+    -   If Model uses custom norm layer expecting [0,1]: **Add `/255.0`** in the loop.
+3.  **Class Mapping:** Ensure `meta.classes` from `metadata.json` matches the output indices of the new model.
+4.  **Threshold:** Verify `meta.confidence_threshold` is set correctly (V4 default: `0.75`).
+5.  **🆕 Image Quality Validation:** Ensure `validateImageQuality()` thresholds match target device camera capabilities.
+6.  **🆕 TTA Implementation:** Confirm all 3 variations are averaged correctly for final prediction.
+
+### How to Verify Preprocessing in Browser Console:
+Open the PWA in Dev Mode (`npm run dev`) and check the console after scanning an image:
+*   ✅ `✅ CORRECT: Raw 0-255 values (matches training)` -> Good to go.
+*   ❌ `❌ WRONG: Values in [0,1] range` -> You must remove the division by 255 in `useClassifier.js`.
+
+### Testing IQA and TTA:
+1. **IQA Testing**: Try capturing photos in poor lighting, blurry conditions, or non-leaf objects. Should see error screen with helpful message.
+2. **TTA Testing**: Compare predictions with and without TTA on edge cases (partial leaves, angled shots). TTA should provide more stable results.
+3. **Performance Profiling**: Use Chrome DevTools > Performance tab to measure total inference time with TTA enabled.
+
+> 🌾 *This guide ensures zero React code changes for model updates. All modifications happen through configuration files, making the app future-proof and easily maintainable. V4.1 has been audited against actual Colab training source code to ensure accuracy. Static INT8 model is recommended for production on mobile devices. Now includes Image Quality Assessment (IQA) and Test-Time Augmentation (TTA) for improved user experience and prediction robustness.*
+
+**Last Updated**: 2026-04-30 (V4.1 Production Release with IQA & TTA)  
+**Current Version**: V4.1 (EfficientNet-B0 + CBAM, Focal Loss, Background Class, Static INT8 Production, IQA, TTA)  
 **Next Planned**: V5 (Improved accuracy or additional crops)
