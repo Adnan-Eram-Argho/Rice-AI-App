@@ -78,12 +78,12 @@ export default function useClassifier(cropId) {
     return Array.from(results[sessionRef.current.outputNames[0]].data)
   }
 
+  // 🌟 FIXED: Removed NO_GREEN check. Now only blocks technical issues (Blur, Light)
   const validateImageQuality = (canvas) => {
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     const { data } = ctx.getImageData(0, 0, 224, 224)
     
     let totalBrightness = 0
-    let greenPixels = 0
     let brightnessValues = []
     const totalPixels = data.length / 4
 
@@ -92,14 +92,9 @@ export default function useClassifier(cropId) {
       const brightness = (r + g + b) / 3
       totalBrightness += brightness
       brightnessValues.push(brightness)
-
-      if (g > r && g > b && g > 50) {
-        greenPixels++
-      }
     }
 
     const avgBrightness = totalBrightness / totalPixels
-    const greenRatio = greenPixels / totalPixels
 
     let sumSquaredDiff = 0
     const mean = avgBrightness
@@ -108,19 +103,20 @@ export default function useClassifier(cropId) {
     }
     const variance = sumSquaredDiff / (brightnessValues.length / 10)
 
-    if (avgBrightness < 35) {
+    // 🚨 Rule 1: Too Dark
+    if (avgBrightness < 30) { // Slightly lowered threshold
       return { valid: false, error: 'TOO_DARK', message: { bn: 'ছবি খুব অন্ধকার! আলোতে ছবি তুলুন।', en: 'Too dark! Please take photo in good light.' } }
     }
-    if (avgBrightness > 225) {
+    // 🚨 Rule 2: Too Bright / Overexposed / White Screen
+    if (avgBrightness > 235) { 
       return { valid: false, error: 'TOO_BRIGHT', message: { bn: 'ছবি খুব উজ্জ্বল! সূর্যের আলো এড়িয়ে তুলুন।', en: 'Too bright! Avoid direct sunlight.' } }
     }
-    if (greenRatio < 0.03) { 
-      return { valid: false, error: 'NO_GREEN', message: { bn: 'পাতা পরিষ্কারভাবে দেখা যাচ্ছে না! ক্যামেরা কাছে নিন।', en: 'Leaf not clearly visible! Move camera closer.' } }
-    }
-    if (variance < 250) { 
-      return { valid: false, error: 'TOO_BLURRY', message: { bn: 'ছবি ঝাপসা! ক্যামেরা স্থির রেখে তুলুন।', en: 'Image is blurry! Hold camera steady.' } }
+    // 🚨 Rule 3: Too Blurry / Solid Color Wall (Low variance means no edges)
+    if (variance < 200) { 
+      return { valid: false, error: 'TOO_BLURRY', message: { bn: 'ছবি ঝাপসা বা স্পষ্ট নয়! ক্যামেরা স্থির রেখে তুলুন।', en: 'Image is blurry or unclear! Hold camera steady.' } }
     }
 
+    // ✅ If no technical issues, let the AI model decide if it's a leaf or background
     return { valid: true }
   }
 
@@ -133,6 +129,7 @@ export default function useClassifier(cropId) {
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
       ctx.drawImage(imgElement, 0, 0, 224, 224)
 
+      // STEP 1: Validate Image Quality
       const qualityCheck = validateImageQuality(canvas)
       if (!qualityCheck.valid) {
         return {
@@ -144,10 +141,9 @@ export default function useClassifier(cropId) {
         }
       }
 
-      // 1. Original
+      // STEP 2: Test-Time Augmentation (TTA) - 3 Variations
       const tensorOriginal = getTensorFromCanvas(canvas)
 
-      // 2. Horizontal Flip
       ctx.clearRect(0, 0, 224, 224)
       ctx.save()
       ctx.translate(224, 0)
@@ -156,7 +152,6 @@ export default function useClassifier(cropId) {
       ctx.restore()
       const tensorHFlip = getTensorFromCanvas(canvas)
 
-      // 3. Vertical Flip
       ctx.clearRect(0, 0, 224, 224)
       ctx.save()
       ctx.translate(0, 224)
@@ -165,9 +160,7 @@ export default function useClassifier(cropId) {
       ctx.restore()
       const tensorVFlip = getTensorFromCanvas(canvas)
 
-      console.log('🔍 Running TTA Inference sequentially...')
-      
-      // 🌟 FIX: Run SEQUENTIALLY to prevent WASM race conditions/NaN outputs
+      // Run SEQUENTIALLY to prevent WASM NaN issue
       const probsOriginal = await runInference(tensorOriginal)
       const probsHFlip = await runInference(tensorHFlip)
       const probsVFlip = await runInference(tensorVFlip)
@@ -184,13 +177,12 @@ export default function useClassifier(cropId) {
         }
       }
 
-      // 🌟 FIX: Safety check for NaN (if WASM memory fails)
+      // Safety check for NaN
       if (isNaN(maxConf)) {
         maxConf = 0;
       }
 
       const predicted = classes[String(maxIdx)]
-      console.log(`✅ TTA Prediction: ${predicted} (${(maxConf * 100).toFixed(1)}%)`)
       
       return {
         class: predicted,

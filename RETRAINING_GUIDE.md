@@ -19,8 +19,8 @@ The frontend now validates image quality **before** sending to the model:
 - **Blur Detection**: Calculates brightness variance; rejects if variance < 250 (blurry/unstable)
 - **User Feedback**: Displays bilingual error messages guiding users to retake better photos
 
-### Test-Time Augmentation (TTA)
-Improves prediction robustness by running **3 parallel inferences**:
+### 🆕 Test-Time Augmentation (TTA)
+Improves prediction robustness by running **3 sequential inferences**:
 1. Original image
 2. Horizontally flipped image
 3. Vertically flipped image
@@ -30,7 +30,9 @@ Results are averaged for more stable predictions, especially useful for:
 - Uneven lighting conditions
 - Angled camera positions
 
-**Performance Impact**: Inference time increases from ~120ms to ~360ms on low-end devices (still acceptable for UX).
+**Performance Impact**: Inference time increases from ~120ms to ~360-400ms on low-end devices (sequential execution prevents WASM memory conflicts).
+
+**⚠️ Critical Implementation Detail**: TTA runs **sequentially** (not in parallel) to avoid WebAssembly race conditions that cause NaN outputs. Each inference completes before the next begins, ensuring memory stability on low-end devices.
 
 ---
 
@@ -362,11 +364,13 @@ The frontend now validates images before inference. If you notice high rejection
 - **Test thoroughly**: Verify IQA doesn't reject valid field photos under different lighting conditions
 
 ### Test-Time Augmentation (TTA) Performance
-TTA runs 3 parallel inferences, which impacts performance:
-- **Expected latency**: ~360ms on low-end Android (vs ~120ms single inference)
+TTA runs 3 **sequential** inferences, which impacts performance:
+- **Expected latency**: ~360-400ms on low-end Android (vs ~120ms single inference)
+- **Why Sequential?**: Parallel execution caused WebAssembly memory race conditions leading to NaN outputs on low-end devices
 - **If too slow**: Consider reducing to 2 variations (original + H-flip only)
 - **Optimization tip**: Ensure `ort.env.wasm.numThreads = 1` for stable performance
 - **Memory impact**: Minimal increase (~5 MB additional during inference)
+- **NaN Safety Check**: Code includes `if (isNaN(maxConf)) maxConf = 0;` as fallback
 
 ### CBAM Block Implementation
 - **USE**: Functional API definition (not subclassed Layer)
@@ -631,10 +635,12 @@ Open the PWA in Dev Mode (`npm run dev`) and check the console after scanning an
 ### Testing IQA and TTA:
 1. **IQA Testing**: Try capturing photos in poor lighting, blurry conditions, or non-leaf objects. Should see error screen with helpful message.
 2. **TTA Testing**: Compare predictions with and without TTA on edge cases (partial leaves, angled shots). TTA should provide more stable results.
-3. **Performance Profiling**: Use Chrome DevTools > Performance tab to measure total inference time with TTA enabled.
+3. **Performance Profiling**: Use Chrome DevTools > Performance tab to measure total inference time with TTA enabled. Expect ~360-400ms due to sequential execution.
+4. **NaN Check**: Verify no NaN outputs occur during TTA by checking console logs for `✅ TTA Prediction:` messages with valid percentages.
+5. **Low-End Device Testing**: Critical to test on 2GB RAM devices to ensure WASM memory stability with sequential execution.
 
 > 🌾 *This guide ensures zero React code changes for model updates. All modifications happen through configuration files, making the app future-proof and easily maintainable. V4.1 has been audited against actual Colab training source code to ensure accuracy. Static INT8 model is recommended for production on mobile devices. Now includes Image Quality Assessment (IQA) and Test-Time Augmentation (TTA) for improved user experience and prediction robustness.*
 
-**Last Updated**: 2026-04-30 (V4.1 Production Release with IQA & TTA)  
-**Current Version**: V4.1 (EfficientNet-B0 + CBAM, Focal Loss, Background Class, Static INT8 Production, IQA, TTA)  
+**Last Updated**: 2026-04-30 (V4.1 Production Release with IQA, TTA & WASM Stability Fix)  
+**Current Version**: V4.1 (EfficientNet-B0 + CBAM, Focal Loss, Background Class, Static INT8 Production, IQA, Sequential TTA with NaN Safety)  
 **Next Planned**: V5 (Improved accuracy or additional crops)

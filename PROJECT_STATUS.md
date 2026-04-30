@@ -274,7 +274,7 @@ vercel --prod
 | Model Load Time (4G) | < 5s | < 8s | Depends on signal |
 | Model Load Time (3G) | < 10s | < 15s | Much better than FP32 |
 | **Single Inference Time** | < 120ms | < 150ms | EfficientNet-B0 + CBAM INT8 |
-| **🆕 TTA Inference Time** | < 400ms | < 500ms | 3 parallel inferences averaged |
+| **🆕 TTA Inference Time** | < 400ms | < 500ms | Sequential execution (3 inferences) to prevent WASM conflicts |
 | Accuracy (Overall) | 94.06% | ±0.5% | Test accuracy (FP32 baseline) |
 | Accuracy (Blast) | > 92% | > 90% | Improved over V3 |
 | Accuracy (Healthy) | > 96% | > 94% | Significantly improved |
@@ -362,6 +362,8 @@ Error: "Protobuf parsing failed"
 → Or disable TTA for very low-end devices (detect via User-Agent)
 → Verify WASM files are cached properly (not re-downloaded)
 → Check device RAM availability (should have ≥ 2GB free)
+→ **Note**: Sequential execution is intentional to prevent NaN outputs from WASM memory conflicts
+
 ```
 
 ### Keras 3 Lambda Layer Errors (During Retraining)
@@ -514,6 +516,16 @@ Since you're using the optimized INT8 model with IQA and TTA, consider adding:
    // Inform users about slightly longer processing
    console.log('Running enhanced analysis (3 scans)...');
    // Takes ~400ms instead of ~120ms but provides more accurate results
+   // Sequential execution prevents WASM memory conflicts on low-end devices
+   ```
+
+7. **🆕 NaN Safety Monitoring**
+   ```javascript
+   // Monitor for WASM failures in production
+   if (isNaN(maxConf)) {
+     console.warn('⚠️ WASM memory issue detected, resetting confidence to 0');
+     // Could trigger fallback or retry logic here
+   }
    ```
 
 ### Performance Monitoring
@@ -530,7 +542,9 @@ Add analytics to track:
 
 ### Key Improvements Over V4.0
 - **+Image Quality Assessment (IQA)**: Validates brightness, green pixel ratio, and blur before inference to prevent garbage inputs
-- **+Test-Time Augmentation (TTA)**: Runs 3 parallel inferences (original + horizontal flip + vertical flip) and averages predictions for improved robustness
+- **+Test-Time Augmentation (TTA)**: Runs 3 **sequential** inferences (original + horizontal flip + vertical flip) and averages predictions for improved robustness
+- **+WASM Stability Fix**: Sequential TTA execution prevents race conditions and NaN outputs on low-end devices
+- **+NaN Safety Check**: Added fallback protection if WASM memory fails during inference
 - **Enhanced Error Handling**: Dedicated UI screen for invalid images with user-friendly Bengali/English messages
 - **Improved User Experience**: Prevents farmers from wasting time on blurry/dark photos by providing immediate feedback
 - **Better Edge Case Handling**: TTA improves accuracy on partially visible leaves, angled shots, and uneven lighting

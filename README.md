@@ -272,18 +272,25 @@ ctx.drawImage(imgElement, 0, 0, 224, 224)
 ctx.restore()
 const tensorVFlip = getTensorFromCanvas(canvas)
 
-// Run all 3 in parallel
-const [probsOriginal, probsHFlip, probsVFlip] = await Promise.all([
-  runInference(tensorOriginal),
-  runInference(tensorHFlip),
-  runInference(tensorVFlip)
-])
+console.log('🔍 Running TTA Inference sequentially...')
+
+// 🌟 CRITICAL: Run SEQUENTIALLY to prevent WASM race conditions/NaN outputs
+const probsOriginal = await runInference(tensorOriginal)
+const probsHFlip = await runInference(tensorHFlip)
+const probsVFlip = await runInference(tensorVFlip)
+
+// 🌟 FIX: Safety check for NaN (if WASM memory fails)
+if (isNaN(maxConf)) {
+  maxConf = 0;
+}
 
 // 🌟 STEP 3: Calculate Mean (Average) Probabilities
 const avgProbs = probsOriginal.map((val, idx) => {
   return (val + probsHFlip[idx] + probsVFlip[idx]) / 3
 })
 ```
+
+**Why Sequential?** Parallel execution with `Promise.all()` caused WebAssembly memory conflicts on low-end devices, resulting in NaN outputs. Sequential execution ensures each inference completes before the next begins, maintaining memory stability.
 
 ### Key Code Snippet (Preprocessing)
 ```
@@ -454,6 +461,15 @@ if (tensor.data[0] >= 250.0 && tensor.data[0] <= 255.0) {
 | `Keras 3 Lambda layer error` | Using `load_model()` instead of rebuild | Use `build_model_safe()` + `load_weights()` pattern |
 | **🆕 "ছবি পরিষ্কার নয়!" error** | Image Quality Validation rejected the photo | Improve lighting, move closer to leaf, hold camera steady |
 | **🆕 Slow inference (>500ms)** | TTA running 3 parallel inferences on slow device | Consider reducing to single inference for low-end devices |
+| **Issue**: TTA Making Inference Too Slow (> 600ms)  
+**Fix**:
+- Profile using Chrome DevTools Performance tab
+- Ensure ort.env.wasm.simd = true is set
+- Consider reducing to 2 variations (original + H-flip only)
+- Or disable TTA for very low-end devices (detect via User-Agent)
+- Verify WASM files are cached properly (not re-downloaded)
+- Check device RAM availability (should have ≥ 2GB free)
+- **Note**: Sequential execution is intentional to prevent NaN outputs from WASM memory conflicts
 
 ---
 
@@ -466,9 +482,12 @@ if (tensor.data[0] >= 250.0 && tensor.data[0] <= 255.0) {
 
 ### 🆕 What's New in V4.1?
 - **+Image Quality Assessment (IQA):** Validates brightness, green pixel ratio, and blur before inference to prevent garbage inputs
-- **+Test-Time Augmentation (TTA):** Runs 3 parallel inferences (original + horizontal flip + vertical flip) and averages predictions for improved robustness
+- **+Test-Time Augmentation (TTA):** Runs 3 **sequential** inferences (original + horizontal flip + vertical flip) and averages predictions for improved robustness
+- **+WASM Stability Fix:** Sequential TTA execution prevents race conditions and NaN outputs on low-end devices
+- **+NaN Safety Check:** Added fallback protection if WASM memory fails during inference
 - **Enhanced Error Handling:** Dedicated UI screen for invalid images with user-friendly Bengali/English messages
 - **Improved User Experience:** Prevents farmers from wasting time on blurry/dark photos by providing immediate feedback
+- **Better Edge Case Handling:** TTA improves accuracy on partially visible leaves, angled shots, and uneven lighting
 
 ### 🔑 Golden Rule for Future Modifications
 > **Trust the Rebuild + Load Weights approach.** Keras 3 strictly guards against deserializing Lambda layers and custom functions. Always rebuild the exact architecture in code first, then call `model.load_weights()`. And remember: **Focal Loss alpha replaces the need for `class_weight` in `model.fit()`**.
