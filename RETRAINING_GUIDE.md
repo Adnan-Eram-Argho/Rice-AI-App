@@ -1,4 +1,4 @@
-# 🌾 Rice AI Doctor - Retraining & Expansion Guide (V4.1 - WITH IQA & TTA)
+# 🌾 Rice AI Doctor - Retraining & Expansion Guide (V4.2 - WITH ENHANCED IQA, TTA & CONTRAST STRETCHING)
 
 ## ⚙️ Core Architecture Rule
 **NEVER modify React/Vite code to add crops or diseases.**  
@@ -10,27 +10,32 @@ All changes happen in:
 
 ---
 
-## 🆕 V4.1 Features Overview
+## 🆕 V4.2 Features Overview
 
-### Image Quality Assessment (IQA)
-The frontend now validates image quality **before** sending to the model:
-- **Brightness Check**: Rejects images with avg brightness < 35 (too dark) or > 225 (overexposed)
-- **Green Pixel Ratio**: Ensures at least 3% of pixels are green (confirms leaf presence)
-- **Blur Detection**: Calculates brightness variance; rejects if variance < 250 (blurry/unstable)
+### Center-Region Image Quality Assessment (IQA)
+The frontend validates image quality **before** sending to the model, using only the **center 60%** of the image:
+- **Center Brightness Check**: Rejects if center region avg brightness < 25 (too dark) or > 240 (overexposed)
+- **Center Blur Detection**: Rejects if center region brightness variance < 150 (no texture/detail)
+- **No green pixel check** — leaf presence is handled by the Background class
+- **Why center-only?** Leaves placed on সাদা কাগজ (white paper) or কালো ব্যাকগ্রাউন্ড (black surface) no longer falsely rejected
 - **User Feedback**: Displays bilingual error messages guiding users to retake better photos
 
-### 🆕 Test-Time Augmentation (TTA)
-Improves prediction robustness by running **3 sequential inferences**:
-1. Original image
-2. Horizontally flipped image
-3. Vertically flipped image
+### 🆕 Per-Channel Contrast Stretching
+Before creating tensors for inference, each R/G/B channel is independently stretched to [0, 255]:
+- Disease spots (brown/gray lesions) equally visible on white paper, black surface, or field background
+- Only stretches if channel dynamic range > 30 (preserves solid-color regions)
+- Applied to ALL TTA variations before inference
 
-Results are averaged for more stable predictions, especially useful for:
-- Partially visible leaves
-- Uneven lighting conditions
-- Angled camera positions
+### 🆕 4-Variation Weighted TTA
+Improves prediction robustness by running **4 sequential inferences**:
+1. Original image (contrast-stretched)
+2. Horizontally flipped (contrast-stretched)
+3. Vertically flipped (contrast-stretched)
+4. **Center Crop 75%** (contrast-stretched) — strips edge backgrounds
 
-**Performance Impact**: Inference time increases from ~120ms to ~360-400ms on low-end devices (sequential execution prevents WASM memory conflicts).
+Results use **weighted averaging**: Original=1, HFlip=1, VFlip=1, **CenterCrop=1.5** (cleanest signal).
+
+**Performance Impact**: Inference time increases from ~120ms to ~480-530ms on low-end devices (4 sequential inferences, each contrast-stretched).
 
 **⚠️ Critical Implementation Detail**: TTA runs **sequentially** (not in parallel) to avoid WebAssembly race conditions that cause NaN outputs. Each inference completes before the next begins, ensuring memory stability on low-end devices.
 
@@ -39,15 +44,16 @@ Results are averaged for more stable predictions, especially useful for:
 ## 🔄 Scenario A: Improve Existing Rice Model (Add More Images)
 *Use when you collect 100+ new field photos for Blast, Brown_Spot, Leaf_Scald, Healthy, or Background.*
 
-### Current Configuration (V4.1 - Production with IQA & TTA)
+### Current Configuration (V4.2 - Production with Enhanced IQA, TTA & Contrast Stretching)
 - **Base Model**: EfficientNet-B0 with CBAM Attention Block (Functional API, no custom objects)
 - **Preprocessing**: RAW 0-255 pixel values (NO /255.0 division) - **CRITICAL**
 - **Loss Function**: **Focal Loss (gamma=2.0, alpha=class_weights)** - Better than sparse_categorical_crossentropy
 - **Current Production Model**: `rice_model_v4_int8.onnx` (~3.2 MB, Static INT8) - **OPTIMIZED FOR MOBILE**
 - **Alternative**: `rice_model_v4.onnx` (~17 MB, FP32) - Available for maximum precision testing
 - **Test Accuracy**: 94.06%
-- **🆕 Image Quality Validation**: Frontend rejects blurry/dark/non-leaf images before inference
-- **🆕 Test-Time Augmentation**: 3 sequential inferences averaged for robustness
+- **🆕 Image Quality Validation**: Center-region (60%) brightness & blur checks — tolerates white/black backgrounds
+- **🆕 Per-Channel Contrast Stretching**: R/G/B channels independently normalized for background-agnostic inference
+- **🆕 Test-Time Augmentation**: 4 sequential weighted inferences (original + H-flip + V-flip + center crop 75%)
 
 ### Steps to Retrain
 
@@ -357,19 +363,27 @@ Results are averaged for more stable predictions, especially useful for:
 - **⚠️ CRITICAL**: Do NOT pass `class_weight` to `model.fit()` when using Focal Loss with alpha weights. This would apply weights twice and cause severe bias.
 
 ### Frontend Image Quality Validation (IQA)
-The frontend now validates images before inference. If you notice high rejection rates:
-- **Brightness thresholds**: Adjust `< 35` (too dark) or `> 225` (too bright) in `useClassifier.js`
-- **Green pixel ratio**: Modify `< 0.03` threshold if detecting non-green rice varieties
-- **Blur detection**: Change variance threshold `< 250` based on camera quality of target devices
-- **Test thoroughly**: Verify IQA doesn't reject valid field photos under different lighting conditions
+The frontend validates the **center 60%** of images before inference. If you notice high rejection rates:
+- **Center brightness thresholds**: Adjust `< 25` (too dark) or `> 240` (too bright) in `useClassifier.js`
+- **Center blur variance**: Change threshold `< 150` based on camera quality of target devices
+- **No green pixel check** — leaf presence is handled by the AI's Background class
+- **Center-only approach**: Prevents false rejections when leaves are on white paper or black backgrounds
+- **Test thoroughly**: Verify IQA doesn't reject valid field photos under different lighting/background conditions
+
+### Per-Channel Contrast Stretching
+Applied before ALL TTA variations. If you notice issues:
+- **Range threshold**: Currently stretches only when channel range > 30. Adjust if colors appear distorted
+- **Disable for testing**: Comment out `applyContrastStretch()` calls to compare with/without stretching
+- **Interaction with model**: Since the model expects RAW 0-255, stretching is safe — it just expands the existing value range
 
 ### Test-Time Augmentation (TTA) Performance
-TTA runs 3 **sequential** inferences, which impacts performance:
-- **Expected latency**: ~360-400ms on low-end Android (vs ~120ms single inference)
+TTA runs 4 **sequential** weighted inferences, which impacts performance:
+- **Expected latency**: ~480-530ms on low-end Android (vs ~120ms single inference)
 - **Why Sequential?**: Parallel execution caused WebAssembly memory race conditions leading to NaN outputs on low-end devices
-- **If too slow**: Consider reducing to 2 variations (original + H-flip only)
+- **Why Center Crop?**: Strips white/black paper borders, giving the model a cleaner leaf view. Gets 1.5x weight.
+- **If too slow**: Consider reducing to 3 variations (drop V-flip) or reduce center crop weight to 1.0
 - **Optimization tip**: Ensure `ort.env.wasm.numThreads = 1` for stable performance
-- **Memory impact**: Minimal increase (~5 MB additional during inference)
+- **Memory impact**: Minimal increase (~8 MB additional during inference for 4 tensors)
 - **NaN Safety Check**: Code includes `if (isNaN(maxConf)) maxConf = 0;` as fallback
 
 ### CBAM Block Implementation
@@ -624,23 +638,25 @@ When updating the model, you **MUST** verify that `src/hooks/useClassifier.js` m
     -   If Model uses custom norm layer expecting [0,1]: **Add `/255.0`** in the loop.
 3.  **Class Mapping:** Ensure `meta.classes` from `metadata.json` matches the output indices of the new model.
 4.  **Threshold:** Verify `meta.confidence_threshold` is set correctly (V4 default: `0.75`).
-5.  **🆕 Image Quality Validation:** Ensure `validateImageQuality()` thresholds match target device camera capabilities.
-6.  **🆕 TTA Implementation:** Confirm all 3 variations are averaged correctly for final prediction.
+5.  **🆕 Center-Region IQA:** Ensure `validateImageQuality()` only checks center 60% — verify thresholds match target device camera capabilities.
+6.  **🆕 Contrast Stretching:** Confirm `applyContrastStretch()` is applied to ALL TTA variations. Range threshold (>30) may need tuning.
+7.  **🆕 4-Variation Weighted TTA:** Confirm all 4 variations (original + H-flip + V-flip + center crop) are weighted correctly (1:1:1:1.5) and averaged with total=4.5.
 
 ### How to Verify Preprocessing in Browser Console:
 Open the PWA in Dev Mode (`npm run dev`) and check the console after scanning an image:
 *   ✅ `✅ CORRECT: Raw 0-255 values (matches training)` -> Good to go.
 *   ❌ `❌ WRONG: Values in [0,1] range` -> You must remove the division by 255 in `useClassifier.js`.
 
-### Testing IQA and TTA:
-1. **IQA Testing**: Try capturing photos in poor lighting, blurry conditions, or non-leaf objects. Should see error screen with helpful message.
-2. **TTA Testing**: Compare predictions with and without TTA on edge cases (partial leaves, angled shots). TTA should provide more stable results.
-3. **Performance Profiling**: Use Chrome DevTools > Performance tab to measure total inference time with TTA enabled. Expect ~360-400ms due to sequential execution.
-4. **NaN Check**: Verify no NaN outputs occur during TTA by checking console logs for `✅ TTA Prediction:` messages with valid percentages.
-5. **Low-End Device Testing**: Critical to test on 2GB RAM devices to ensure WASM memory stability with sequential execution.
+### Testing IQA, Contrast Stretching, and TTA:
+1. **Center-Region IQA Testing**: Try photos on white paper, black surface, and natural backgrounds. Only genuinely dark/bright/blurry center regions should be rejected.
+2. **Contrast Stretching Testing**: Compare predictions with/without contrast stretching on photos with different backgrounds. Disease spots should be more confidently detected.
+3. **4-Variation TTA Testing**: Compare predictions with full 4-variation TTA vs single inference on edge cases (partial leaves, angled shots, white/black paper). TTA should provide more stable results.
+4. **Performance Profiling**: Use Chrome DevTools > Performance tab to measure total inference time with 4-variation TTA. Expect ~480-530ms due to sequential execution.
+5. **NaN Check**: Verify no NaN outputs occur during TTA by checking console logs.
+6. **Low-End Device Testing**: Critical to test on 2GB RAM devices to ensure WASM memory stability with 4 sequential inferences.
 
-> 🌾 *This guide ensures zero React code changes for model updates. All modifications happen through configuration files, making the app future-proof and easily maintainable. V4.1 has been audited against actual Colab training source code to ensure accuracy. Static INT8 model is recommended for production on mobile devices. Now includes Image Quality Assessment (IQA) and Test-Time Augmentation (TTA) for improved user experience and prediction robustness.*
+> 🌾 *This guide ensures zero React code changes for model updates. All modifications happen through configuration files, making the app future-proof and easily maintainable. V4.2 has been audited against actual Colab training source code to ensure accuracy. Now includes Center-Region IQA (tolerates white/black backgrounds), Per-Channel Contrast Stretching, and 4-Variation Weighted TTA for improved robustness across diverse photography conditions.*
 
-**Last Updated**: 2026-04-30 (V4.1 Production Release with IQA, TTA & WASM Stability Fix)  
-**Current Version**: V4.1 (EfficientNet-B0 + CBAM, Focal Loss, Background Class, Static INT8 Production, IQA, Sequential TTA with NaN Safety)  
+**Last Updated**: 2026-04-30 (V4.2 Production Release with Enhanced IQA, 4-Variation TTA & Contrast Stretching)  
+**Current Version**: V4.2 (EfficientNet-B0 + CBAM, Focal Loss, Background Class, Center-Region IQA, Per-Channel Contrast Stretching, 4-Variation Weighted TTA)  
 **Next Planned**: V5 (Improved accuracy or additional crops)

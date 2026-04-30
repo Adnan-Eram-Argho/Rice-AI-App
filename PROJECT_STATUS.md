@@ -1,7 +1,7 @@
-# 📋 PROJECT STATUS & ACTION ITEMS - RICE AI APP V4.1 (WITH IQA & TTA)
+# 📋 PROJECT STATUS & ACTION ITEMS - RICE AI APP V4.2 (WITH ENHANCED IQA, TTA & CONTRAST STRETCHING)
 
 **Date**: 2026-04-30  
-**Status**: ✅ Code verified, ✅ Configuration updated to V4.1 with Image Quality Assessment and Test-Time Augmentation, ⚠️ Action required for deployment
+**Status**: ✅ Code verified, ✅ Configuration updated to V4.2 with Center-Region IQA, 4-Variation Weighted TTA, and Per-Channel Contrast Stretching, ⚠️ Action required for deployment
 
 ---
 
@@ -12,8 +12,9 @@
 - **EfficientNet-B0 + CBAM model**: Functional API attention block with Keras 3 Lambda layers
 - **Class mapping**: Blast=0, Brown_Spot=1, Healthy=2, Leaf_Scald=3, Background=4 *(⚠️ Verify alphabetical order)*
 - **Confidence threshold**: 0.75 (triggers fallback warning below this OR if Background class detected)
-- **🆕 Image Quality Assessment (IQA)**: Validates brightness, green pixel ratio, and blur before inference
-- **🆕 Test-Time Augmentation (TTA)**: Runs 3 sequential inferences (original + H-flip + V-flip) and averages predictions
+- **🆕 Image Quality Assessment (IQA)**: Center-region (60%) brightness & blur validation — tolerates white paper / black backgrounds
+- **🆕 Test-Time Augmentation (TTA)**: 4 sequential weighted inferences (original + H-flip + V-flip + center crop 75%)
+- **🆕 Per-Channel Contrast Stretching**: Each R/G/B channel independently normalized before inference
 
 ### 2. Preprocessing Logic ✅ (CRITICAL - VERIFIED CORRECT)
 ```javascript
@@ -47,31 +48,46 @@ img = tf.cast(img, tf.float32)  # Range [0, 255] — NO division by 255.0
 - `crops_config.json`: Points to `metadata_rice_v4.json`
 - All class names match training output
 
-### 6. 🆕 Image Quality Validation (IQA) ✅
+### 6. 🆕 Center-Region Image Quality Validation (IQA) ✅
 Implemented in `useClassifier.js`:
 ```javascript
 const validateImageQuality = (canvas) => {
-  // Brightness check: Rejects < 30 (too dark) or > 235 (too bright)
-  // Blur detection: Rejects if brightness variance < 200
-  // NOTE: Green pixel ratio check was removed - the AI model handles leaf detection via Background class
+  // Only checks CENTER 60% of image (ignores edges)
+  // This prevents false rejections for leaves on white paper or black backgrounds
+  // Brightness check: Rejects center < 25 (too dark) or > 240 (overexposed)
+  // Blur detection: Rejects if center brightness variance < 150 (no texture)
+  // No green pixel check — leaf detection handled by Background class
 }
 ```
-**User Experience**: Shows dedicated error screen with helpful Bengali/English messages when image quality is poor.
+**User Experience**: Shows dedicated error screen with helpful Bengali/English messages. Leaves on সাদা কাগজ/কালো ব্যাকগ্রাউন্ড no longer falsely rejected.
 
-### 7. 🆕 Test-Time Augmentation (TTA) ✅
+### 7. 🆕 Per-Channel Contrast Stretching ✅
 Implemented in `useClassifier.js`:
 ```javascript
-// Runs 3 SEQUENTIAL inferences (not parallel - prevents WASM NaN issues)
-const probsOriginal = await runInference(tensorOriginal)
-const probsHFlip = await runInference(tensorHFlip)
-const probsVFlip = await runInference(tensorVFlip)
+const applyContrastStretch = (tensorData) => {
+  // Each R/G/B channel independently stretched to [0, 255]
+  // Only stretches if channel range > 30 (avoids distorting solid colors)
+  // Applied to ALL TTA variations before inference
+}
+```
+**Benefit**: Disease spots (brown/gray lesions) equally visible whether leaf is on white paper, black surface, or natural field background.
 
-// Averages predictions for robustness
+### 8. 🆕 4-Variation Weighted TTA ✅
+Implemented in `useClassifier.js`:
+```javascript
+// 4 sequential inferences (prevents WASM NaN issues)
+const probsOriginal = await runInference(tensorOriginal)     // weight: 1.0
+const probsHFlip = await runInference(tensorHFlip)           // weight: 1.0
+const probsVFlip = await runInference(tensorVFlip)           // weight: 1.0
+const probsCenterCrop = await runInference(tensorCenterCrop) // weight: 1.5
+
+// Weighted average (center crop = cleanest leaf signal)
+const weightTotal = 4.5
 const avgProbs = probsOriginal.map((val, idx) => {
-  return (val + probsHFlip[idx] + probsVFlip[idx]) / 3
+  return (val + probsHFlip[idx] + probsVFlip[idx] + probsCenterCrop[idx] * 1.5) / weightTotal
 })
 ```
-**Performance Impact**: Inference time increases from ~120ms to ~360ms on low-end devices (still acceptable).
+**Performance Impact**: Inference time increases from ~120ms to ~480-530ms on low-end devices (4 sequential inferences).
 
 ---
 
@@ -538,16 +554,21 @@ Add analytics to track:
 
 ---
 
-## 🆕 WHAT'S NEW IN V4.1?
+## 🆕 WHAT'S NEW IN V4.2?
 
-### Key Improvements Over V4.0
-- **+Image Quality Assessment (IQA)**: Validates brightness, green pixel ratio, and blur before inference to prevent garbage inputs
-- **+Test-Time Augmentation (TTA)**: Runs 3 **sequential** inferences (original + horizontal flip + vertical flip) and averages predictions for improved robustness
-- **+WASM Stability Fix**: Sequential TTA execution prevents race conditions and NaN outputs on low-end devices
-- **+NaN Safety Check**: Added fallback protection if WASM memory fails during inference
-- **Enhanced Error Handling**: Dedicated UI screen for invalid images with user-friendly Bengali/English messages
-- **Improved User Experience**: Prevents farmers from wasting time on blurry/dark photos by providing immediate feedback
-- **Better Edge Case Handling**: TTA improves accuracy on partially visible leaves, angled shots, and uneven lighting
+### Key Improvements Over V4.1
+- **+Center-Region IQA**: Only checks center 60% of image — tolerates leaves on white paper / black backgrounds without false rejections
+- **+Per-Channel Contrast Stretching**: Each R/G/B channel independently normalized to [0,255] before inference — disease spots visible regardless of background
+- **+4-Variation Weighted TTA**: Added Center Crop (75%) as 4th variation with 1.5x weight — strips white/black paper edges
+- **+Weighted Averaging**: Center crop gets 1.5x weight (cleanest signal); total: 1+1+1+1.5 = 4.5
+- **Relaxed IQA Thresholds**: Dark < 25, Bright > 240, Blur < 150 (fewer false rejections in field conditions)
+
+### Key Improvements Over V4.0 (from V4.1)
+- **+Image Quality Assessment (IQA)**: Validates brightness and blur before inference
+- **+Test-Time Augmentation (TTA)**: Sequential inferences for robustness
+- **+WASM Stability Fix**: Sequential execution prevents NaN outputs
+- **+NaN Safety Check**: Fallback protection for WASM memory failures
+- **Enhanced Error Handling**: Bilingual error screen for invalid images
 
 ### Key Improvements Over V3 (from V4.0)
 - **+3.19% accuracy improvement** (90.875% → 94.06%)
@@ -563,9 +584,9 @@ Add analytics to track:
 
 ---
 
-**Project Status**: 🟢 Ready for final testing (V4.1 configuration complete with IQA & TTA)  
+**Project Status**: 🟢 Ready for final testing (V4.2 configuration complete with Enhanced IQA, TTA & Contrast Stretching)  
 **Estimated Time to Deploy**: 15-20 minutes (once PWA icons are generated)  
-**Risk Level**: Low (optimized INT8 model suitable for all target devices)  
+**Risk Level**: Low (optimized for diverse photography conditions)  
 **Mitigation**: Test thoroughly on target devices; have FP32 backup ready if needed
 
 **Questions?** Refer to:
@@ -574,4 +595,4 @@ Add analytics to track:
 
 ---
 
-*Last Updated: 2026-04-30 | V4.1 Production Release with IQA & TTA | Maintained by: Adnan Eram Argho*
+*Last Updated: 2026-04-30 | V4.2 Production Release with Enhanced IQA, 4-Variation TTA & Contrast Stretching | Maintained by: Adnan Eram Argho*

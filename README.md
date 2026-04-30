@@ -1,9 +1,9 @@
-# 🌾 RICE DISEASE DETECTION PWA - COMPLETE TECHNICAL SUMMARY (V4.1 - WITH IQA & TTA)
-*Optimized for AI ingestion. Contains exact architecture, preprocessing rules, file structure, training config, deployment settings, and modification guidelines for future AI agents. **Audited and corrected against actual V4 Colab training source code. Now includes Image Quality Assessment (IQA) and Test-Time Augmentation (TTA).***
+# 🌾 RICE DISEASE DETECTION PWA - COMPLETE TECHNICAL SUMMARY (V4.2 - WITH ENHANCED IQA, TTA & CONTRAST STRETCHING)
+*Optimized for AI ingestion. Contains exact architecture, preprocessing rules, file structure, training config, deployment settings, and modification guidelines for future AI agents. **Audited and corrected against actual V4 Colab training source code. Now includes Center-Region IQA, 4-Variation Weighted TTA, and Per-Channel Contrast Stretching.***
 
 ---
 
-## 📦 PROJECT OVERVIEW & CONSTRAINTS (V4.1 - VERIFIED)
+## 📦 PROJECT OVERVIEW & CONSTRAINTS (V4.2 - VERIFIED)
 | Parameter | Value / Rule | Status |
 |-----------|--------------|--------|
 | **Target Users** | Bangladeshi Farmers, SAU Students, Agriculture Officers | ✅ |
@@ -11,12 +11,13 @@
 | **Device Constraint** | Low-end Android (2GB RAM, 3G networks) | ✅ |
 | **Model Architecture** | **EfficientNet-B0 + CBAM** (Functional API, Lambda layers with output_shape) | ✅ |
 | **Model Size Limit** | **< 8 MB** (Static INT8 quantized ONNX) | ✅ Achieved: ~3.2 MB |
-| **Inference Target** | `< 400 ms` on-device (with TTA: 3 inferences) | ✅ |
+| **Inference Target** | `< 550 ms` on-device (with TTA: 4 inferences) | ✅ |
 | **Safety Threshold** | `confidence < 0.75` OR Class 4 (Background) → Triggers fallback | ✅ |
 | **Architecture Rule** | **Zero hardcoded crops/classes in React.** All driven by `public/config/crops_config.json` | ✅ |
 | **Final Accuracy** | **94.06%** Test Accuracy (Phase 2, EarlyStopped at Epoch 13) | ✅ |
-| **🆕 Image Quality Check** | Brightness, Green Pixel Ratio, Blur Detection | ✅ Prevents garbage inputs |
-| **🆕 Test-Time Augmentation** | 3 variations (Original + H-Flip + V-Flip) averaged | ✅ Improves robustness |
+| **🆕 Image Quality Check** | Center-region brightness & blur detection (tolerates white/black backgrounds) | ✅ Prevents garbage inputs |
+| **🆕 Test-Time Augmentation** | 4 variations (Original + H-Flip + V-Flip + Center Crop 75%) weighted average | ✅ Improves robustness |
+| **🆕 Contrast Stretching** | Per-channel R/G/B normalization before inference | ✅ Background-agnostic |
 
 ---
 
@@ -191,7 +192,7 @@ model.load_weights(P2_CKPT)
 ## 📱 FRONTEND IMPLEMENTATION (REACT + VITE)
 
 ### Core Logic: `src/hooks/useClassifier.js`
-The classifier hook handles dynamic model loading, strict preprocessing, image quality validation, and test-time augmentation to match the V4 Python training pipeline.
+The classifier hook handles dynamic model loading, strict preprocessing, image quality validation, contrast normalization, and test-time augmentation to match the V4 Python training pipeline.
 
 *   **Dynamic Config Loading:** Fetches `crops_config.json` to determine the correct `.onnx` file and metadata.
 *   **Preprocessing (CRITICAL):**
@@ -199,98 +200,106 @@ The classifier hook handles dynamic model loading, strict preprocessing, image q
     *   **Normalization:** **RAW 0-255** values extracted via `ctx.getImageData()`.
     *   **⚠️ NO Division:** Unlike standard tutorials, we do **NOT** divide by 255.0. EfficientNetB0 has an internal normalization layer that expects 0-255 inputs.
     *   **Format:** NHWC `[1, 224, 224, 3]` Float32 Tensor.
-*   **🆕 Image Quality Assessment (IQA):** Before inference, validates:
-    *   **Brightness Check:** Rejects images with avg brightness < 35 (too dark) or > 225 (too bright).
-    *   **Green Pixel Ratio:** Ensures at least 3% of pixels are green (leaf detection).
-    *   **Blur Detection:** Calculates brightness variance; rejects if variance < 250 (blurry image).
+*   **🆕 Center-Region Image Quality Assessment (IQA):** Before inference, validates the **center 60%** of the image only (ignoring edges). This prevents false rejections when leaves are placed on white paper or black surfaces:
+    *   **Center Brightness Check:** Rejects if center region avg brightness < 25 (too dark) or > 240 (overexposed).
+    *   **Center Blur Detection:** Rejects if center region brightness variance < 150 (no texture/detail).
+    *   **No green pixel check** — leaf presence is handled by the Background class.
     *   Returns user-friendly error messages in Bengali/English if validation fails.
-*   **🆕 Test-Time Augmentation (TTA):** Runs 3 parallel inferences:
-    1.  Original image
-    2.  Horizontally flipped image
-    3.  Vertically flipped image
-    *   Averages the probability outputs from all 3 variations for more robust predictions.
+*   **🆕 Per-Channel Contrast Stretching:** Before creating tensors for inference, each R/G/B channel is independently stretched to the full [0, 255] range. This normalizes photos so disease spots are equally visible whether the leaf is on white paper, black surface, or natural field background.
+*   **🆕 4-Variation Weighted TTA:** Runs 4 sequential inferences:
+    1.  Original image (contrast-stretched)
+    2.  Horizontally flipped (contrast-stretched)
+    3.  Vertically flipped (contrast-stretched)
+    4.  **Center Crop 75%** (contrast-stretched) — strips edge backgrounds (white/black paper)
+    *   Weighted average: Original=1, HFlip=1, VFlip=1, **CenterCrop=1.5** (cleanest signal gets more weight).
 *   **Inference:** Uses `onnxruntime-web` with WASM execution provider (`ort.env.wasm.numThreads = 1`).
-*   **Safety Check:** Includes dev-mode console logs to verify pixel values are in the [0, 255] range, preventing silent accuracy drops.
+*   **Safety Check:** NaN fallback protection if WASM memory fails during inference.
 
-### Key Code Snippet (Image Quality Validation)
-```
+### Key Code Snippet (Center-Region Image Quality Validation)
+```javascript
 const validateImageQuality = (canvas) => {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   const { data } = ctx.getImageData(0, 0, 224, 224)
   
-  let totalBrightness = 0, greenPixels = 0, brightnessValues = []
-  const totalPixels = data.length / 4
+  // Only check center 60% of image (leaf is usually centered)
+  const margin = Math.floor(224 * 0.2) // 20% margin = 44px each side
+  const regionStart = margin, regionEnd = 224 - margin
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i+1], b = data[i+2]
-    const brightness = (r + g + b) / 3
-    totalBrightness += brightness
-    brightnessValues.push(brightness)
-    if (g > r && g > b && g > 50) greenPixels++
+  let totalBrightness = 0, brightnessValues = [], centerPixelCount = 0
+  for (let y = 0; y < 224; y++) {
+    for (let x = 0; x < 224; x++) {
+      if (x >= regionStart && x < regionEnd && y >= regionStart && y < regionEnd) {
+        const i = (y * 224 + x) * 4
+        const brightness = (data[i] + data[i+1] + data[i+2]) / 3
+        totalBrightness += brightness
+        brightnessValues.push(brightness)
+        centerPixelCount++
+      }
+    }
   }
-
-  const avgBrightness = totalBrightness / totalPixels
-  const greenRatio = greenPixels / totalPixels
-  
-  // Calculate variance for blur detection
-  let sumSquaredDiff = 0
-  for(let i=0; i<brightnessValues.length; i+=10) { 
-    sumSquaredDiff += Math.pow(brightnessValues[i] - avgBrightness, 2)
-  }
-  const variance = sumSquaredDiff / (brightnessValues.length / 10)
-
-  if (avgBrightness < 35) return { valid: false, error: 'TOO_DARK' }
-  if (avgBrightness > 225) return { valid: false, error: 'TOO_BRIGHT' }
-  if (greenRatio < 0.03) return { valid: false, error: 'NO_GREEN' }
-  if (variance < 250) return { valid: false, error: 'TOO_BLURRY' }
-
+  const avgBrightness = totalBrightness / centerPixelCount
+  // ... variance calculation on center region ...
+  if (avgBrightness < 25) return { valid: false, error: 'TOO_DARK' }
+  if (avgBrightness > 240) return { valid: false, error: 'TOO_BRIGHT' }
+  if (variance < 150)    return { valid: false, error: 'TOO_BLURRY' }
   return { valid: true }
 }
 ```
+**Why center-only?** When leaves are placed on সাদা কাগজ (white paper) or কালো ব্যাকগ্রাউন্ড (black surface) for clearer photography, global brightness checks would false-reject valid images. Checking only the center where the leaf sits avoids this.
 
-### Key Code Snippet (Test-Time Augmentation)
+### Key Code Snippet (Per-Channel Contrast Stretching)
+```javascript
+const applyContrastStretch = (tensorData) => {
+  const totalPixels = 224 * 224
+  const stretched = new Float32Array(tensorData.length)
+  for (let ch = 0; ch < 3; ch++) {
+    let minVal = 255, maxVal = 0
+    for (let p = 0; p < totalPixels; p += 4) {
+      const val = tensorData[p * 3 + ch]
+      if (val < minVal) minVal = val
+      if (val > maxVal) maxVal = val
+    }
+    const range = maxVal - minVal
+    if (range > 30) {
+      for (let p = 0; p < totalPixels; p++) {
+        const idx = p * 3 + ch
+        stretched[idx] = Math.min(255, Math.max(0, ((tensorData[idx] - minVal) / range) * 255))
+      }
+    } else {
+      for (let p = 0; p < totalPixels; p++) stretched[p * 3 + ch] = tensorData[p * 3 + ch]
+    }
+  }
+  return stretched
+}
 ```
-// 🌟 STEP 2: Test-Time Augmentation (TTA) - 3 Variations
-// 1. Original
-const tensorOriginal = getTensorFromCanvas(canvas)
+**Why contrast stretching?** Disease spots (brown/gray lesions) can appear washed out on white paper or too dark on black backgrounds. Stretching each channel independently makes these patterns equally visible regardless of the photography setup.
 
-// 2. Horizontal Flip
-ctx.clearRect(0, 0, 224, 224)
-ctx.save()
-ctx.translate(224, 0)
-ctx.scale(-1, 1)
-ctx.drawImage(imgElement, 0, 0, 224, 224)
-ctx.restore()
-const tensorHFlip = getTensorFromCanvas(canvas)
+### Key Code Snippet (4-Variation Weighted TTA)
+```javascript
+// STEP 2: Contrast-stretch all tensors
+const tensorOriginal = applyContrastStretch(getTensorFromCanvas(canvas))
+// ... H-flip, V-flip variations also contrast-stretched ...
 
-// 3. Vertical Flip
-ctx.clearRect(0, 0, 224, 224)
-ctx.save()
-ctx.translate(0, 224)
-ctx.scale(1, -1)
-ctx.drawImage(imgElement, 0, 0, 224, 224)
-ctx.restore()
-const tensorVFlip = getTensorFromCanvas(canvas)
+// STEP 3: Center Crop (75%) — strips white/black paper edges
+const cropRatio = 0.75
+ctx.drawImage(imgElement, cropX, cropY, cropW, cropH, 0, 0, 224, 224)
+const tensorCenterCrop = applyContrastStretch(getTensorFromCanvas(canvas))
 
-console.log('🔍 Running TTA Inference sequentially...')
-
-// 🌟 CRITICAL: Run SEQUENTIALLY to prevent WASM race conditions/NaN outputs
+// STEP 4: Sequential inference (prevents WASM NaN)
 const probsOriginal = await runInference(tensorOriginal)
 const probsHFlip = await runInference(tensorHFlip)
 const probsVFlip = await runInference(tensorVFlip)
+const probsCenterCrop = await runInference(tensorCenterCrop)
 
-// 🌟 FIX: Safety check for NaN (if WASM memory fails)
-if (isNaN(maxConf)) {
-  maxConf = 0;
-}
-
-// 🌟 STEP 3: Calculate Mean (Average) Probabilities
+// STEP 5: Weighted average (center crop = 1.5x weight)
+const weightTotal = 4.5 // 1 + 1 + 1 + 1.5
 const avgProbs = probsOriginal.map((val, idx) => {
-  return (val + probsHFlip[idx] + probsVFlip[idx]) / 3
+  return (val + probsHFlip[idx] + probsVFlip[idx] + probsCenterCrop[idx] * 1.5) / weightTotal
 })
 ```
+**Why 4 variations?** Original + HFlip + VFlip capture the full image from different orientations. Center Crop strips away white/black paper borders and gives the model a clean view of just the leaf. It gets 1.5x weight because it's the least noisy signal.
 
-**Why Sequential?** Parallel execution with `Promise.all()` caused WebAssembly memory conflicts on low-end devices, resulting in NaN outputs. Sequential execution ensures each inference completes before the next begins, maintaining memory stability.
+**Why Sequential?** Parallel execution with `Promise.all()` caused WebAssembly memory conflicts on low-end devices, resulting in NaN outputs. Sequential execution ensures each inference completes before the next begins.
 
 ### Key Code Snippet (Preprocessing)
 ```
@@ -381,7 +390,7 @@ VitePWA({
 | **Background Class Logic (Frontend)** | Class 4 means "Not a leaf". | Farmers receive pesticide advice for hands/walls. |
 | **ONNX opset=16** | Required for EfficientNet Swish activation | Export fails or garbage output |
 | **🆕 Image Quality Validation** | Prevents blurry/dark/non-leaf images from inference | Wasted inference time, poor UX |
-| **🆕 TTA Inference Time** | 3 sequential inferences take ~3x longer than single inference | Ensure device can handle <400ms total latency |
+| **🆕 TTA Inference Time** | 4 sequential inferences take ~4x longer than single inference | Ensure device can handle <550ms total latency |
 
 ---
 
@@ -483,13 +492,19 @@ if (tensor.data[0] >= 250.0 && tensor.data[0] <= 255.0) {
 ### 🔑 Golden Rule for Future Modifications
 > **Trust the Rebuild + Load Weights approach.** Keras 3 strictly guards against deserializing Lambda layers and custom functions. Always rebuild the exact architecture in code first, then call `model.load_weights()`. And remember: **Focal Loss alpha replaces the need for `class_weight` in `model.fit()`**.
 
-### 🆕 What's New in V4.1?
-- **+Image Quality Assessment (IQA):** Validates brightness, green pixel ratio, and blur before inference to prevent garbage inputs
-- **+Test-Time Augmentation (TTA):** Runs 3 **sequential** inferences (original + horizontal flip + vertical flip) and averages predictions for improved robustness
+### 🆕 What's New in V4.2?
+- **+Center-Region IQA:** Only checks center 60% of image for brightness/blur — tolerates leaves on white paper / black backgrounds without false rejections
+- **+Per-Channel Contrast Stretching:** Each R/G/B channel independently normalized to [0,255] range — disease spots visible regardless of background color
+- **+4-Variation Weighted TTA:** Added Center Crop (75%) as 4th variation with 1.5x weight — strips away white/black paper edges for cleaner inference
+- **+Weighted Averaging:** Center crop gets higher weight (1.5x) as the cleanest leaf signal; total weights: 1+1+1+1.5 = 4.5
+- **Relaxed IQA Thresholds:** Dark < 25, Bright > 240, Blur variance < 150 (down from 30/235/200) — fewer false rejections in field conditions
+
+### What Was in V4.1?
+- **+Image Quality Assessment (IQA):** Validates brightness and blur before inference to prevent garbage inputs
+- **+Test-Time Augmentation (TTA):** 3 sequential inferences (original + horizontal flip + vertical flip)
 - **+WASM Stability Fix:** Sequential TTA execution prevents race conditions and NaN outputs on low-end devices
 - **+NaN Safety Check:** Added fallback protection if WASM memory fails during inference
 - **Enhanced Error Handling:** Dedicated UI screen for invalid images with user-friendly Bengali/English messages
-- **Improved User Experience:** Prevents farmers from wasting time on blurry/dark photos by providing immediate feedback
 - **Better Edge Case Handling:** TTA improves accuracy on partially visible leaves, angled shots, and uneven lighting
 
 
@@ -506,4 +521,4 @@ if (tensor.data[0] >= 250.0 && tensor.data[0] <= 255.0) {
 
 ---
 
-*Last Updated: V4.1 Audited | License: Open Source for Agricultural Development*
+*Last Updated: V4.2 Audited | License: Open Source for Agricultural Development*
