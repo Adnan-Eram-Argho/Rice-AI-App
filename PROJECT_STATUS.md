@@ -13,7 +13,7 @@
 - **Class mapping**: Blast=0, Brown_Spot=1, Healthy=2, Leaf_Scald=3, Background=4 *(⚠️ Verify alphabetical order)*
 - **Confidence threshold**: 0.75 (triggers fallback warning below this OR if Background class detected)
 - **🆕 Image Quality Assessment (IQA)**: Validates brightness, green pixel ratio, and blur before inference
-- **🆕 Test-Time Augmentation (TTA)**: Runs 3 parallel inferences (original + H-flip + V-flip) and averages predictions
+- **🆕 Test-Time Augmentation (TTA)**: Runs 3 sequential inferences (original + H-flip + V-flip) and averages predictions
 
 ### 2. Preprocessing Logic ✅ (CRITICAL - VERIFIED CORRECT)
 ```javascript
@@ -51,9 +51,9 @@ img = tf.cast(img, tf.float32)  # Range [0, 255] — NO division by 255.0
 Implemented in `useClassifier.js`:
 ```javascript
 const validateImageQuality = (canvas) => {
-  // Brightness check: Rejects < 35 (too dark) or > 225 (too bright)
-  // Green pixel ratio: Ensures ≥ 3% green pixels (leaf detection)
-  // Blur detection: Rejects if brightness variance < 250
+  // Brightness check: Rejects < 30 (too dark) or > 235 (too bright)
+  // Blur detection: Rejects if brightness variance < 200
+  // NOTE: Green pixel ratio check was removed - the AI model handles leaf detection via Background class
 }
 ```
 **User Experience**: Shows dedicated error screen with helpful Bengali/English messages when image quality is poor.
@@ -61,12 +61,10 @@ const validateImageQuality = (canvas) => {
 ### 7. 🆕 Test-Time Augmentation (TTA) ✅
 Implemented in `useClassifier.js`:
 ```javascript
-// Runs 3 parallel inferences
-const [probsOriginal, probsHFlip, probsVFlip] = await Promise.all([
-  runInference(tensorOriginal),
-  runInference(tensorHFlip),
-  runInference(tensorVFlip)
-])
+// Runs 3 SEQUENTIAL inferences (not parallel - prevents WASM NaN issues)
+const probsOriginal = await runInference(tensorOriginal)
+const probsHFlip = await runInference(tensorHFlip)
+const probsVFlip = await runInference(tensorVFlip)
 
 // Averages predictions for robustness
 const avgProbs = probsOriginal.map((val, idx) => {
@@ -77,17 +75,19 @@ const avgProbs = probsOriginal.map((val, idx) => {
 
 ---
 
-## ✅ CONFIGURATION UPDATED TO V4.0 STATIC INT8 (PRODUCTION)
+## ✅ CONFIGURATION UPDATED TO V4.1 STATIC INT8 (PRODUCTION)
 
 ### Model File Selection
 **Current Configuration**: Using **Static INT8 quantized model** (`rice_model_v4_int8.onnx`)
 
 **Metadata Settings**:
-- ✅ `model_filename`: `"rice_model_v4_int8.onnx"` (~3.2 MB)
+- ✅ `model_filename`: `"rice_model_v4.onnx"` (~18.2 MB, FP32)
 - ✅ `normalization`: `"raw_0_255"` (explicit RAW pixel values)
-- ✅ `quantization`: `"Static_INT8"` (weights + activations quantized)
-- ✅ `model_size_mb`: 3.2
+- ✅ `quantization`: `"Static_INT8"` (metadata label; actual file is FP32)
+- ✅ `model_size_mb`: 5.61
 - ✅ Added fields: `val_accuracy`, `test_accuracy`, `base_model`, `loss_function`
+
+> ⚠️ **NOTE**: The metadata says `Static_INT8` but the actual model file (`rice_model_v4.onnx`) is **FP32** (~18.2 MB). The INT8 quantized file (`rice_model_v4_int8.onnx`) has **not been generated/added** to the project yet. To fix this, either generate the INT8 model from the Colab notebook, or update `quantization` to `"FP32"` and correct `model_size_mb` to ~18.2.
 
 **Why Static INT8?**:
 - **Optimized for low-end Android devices** (2GB RAM, 3G networks)

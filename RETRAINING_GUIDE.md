@@ -47,7 +47,7 @@ Results are averaged for more stable predictions, especially useful for:
 - **Alternative**: `rice_model_v4.onnx` (~17 MB, FP32) - Available for maximum precision testing
 - **Test Accuracy**: 94.06%
 - **🆕 Image Quality Validation**: Frontend rejects blurry/dark/non-leaf images before inference
-- **🆕 Test-Time Augmentation**: 3 parallel inferences averaged for robustness
+- **🆕 Test-Time Augmentation**: 3 sequential inferences averaged for robustness
 
 ### Steps to Retrain
 
@@ -274,7 +274,7 @@ Results are averaged for more stable predictions, especially useful for:
 ## 🔧 Scenario D: Switch Between FP32 and INT8 Models
 *Use if you need to toggle between precision and performance.*
 
-### Current Situation (V4.0)
+### Current Situation (V4.1)
 - Using INT8 model: `rice_model_v4_int8.onnx` (~3.2 MB) - **PRODUCTION (Optimized for Mobile)**
 - Backup available: `rice_model_v4.onnx` (~17 MB) - **TESTING OPTION (Maximum Precision)**
 

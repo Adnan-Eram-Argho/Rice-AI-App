@@ -80,10 +80,10 @@ rice-ai-app/
 │       ├── rice_model_v4_int8.onnx    # ✅ Static INT8 quantized model (~3.2 MB)
 │       └── metadata_rice_v4.json      # ✅ V4 Config: 5 classes, Static_INT8
 ├── src/
+│   ├── App.jsx                        # Orchestrator (state, UI layout, PWA init)
 │   ├── hooks/
 │   │   └── useClassifier.js           # Dynamic ONNX loader + preprocessing (RAW 0-255)
 │   ├── components/
-│   │   ├── App.jsx                    # Orchestrator (state, UI layout, PWA init)
 │   │   ├── CropSelector.jsx           # Reads crops_config.json
 │   │   ├── CameraScanner.jsx          # getUserMedia + canvas capture
 │   │   └── ResultDisplay.jsx          # Bilingual UI + Background class handling
@@ -322,11 +322,14 @@ if (import.meta.env.DEV) {
 ## 📄 FINAL AUTO-GENERATED CONFIGS (V4)
 
 ### `metadata_rice_v4.json` (Frontend Config)
+
+> ⚠️ **CURRENT STATE**: The project currently uses the **FP32 model** (`rice_model_v4.onnx`, ~18.2 MB) because the Static INT8 quantized model (`rice_model_v4_int8.onnx`) has **not yet been generated/added** to the project. The metadata below reflects the *intended* INT8 configuration. Update `model_filename` and `model_size_mb` after adding the INT8 model.
+
 ```json
 {
   "crop_id": "rice",
   "model_version": "v4",
-  "model_filename": "rice_model_v4_int8.onnx",
+  "model_filename": "rice_model_v4.onnx",
   "input_name": "input",
   "input_shape": [1, 224, 224, 3],
   "output_name": "rice_output",
@@ -341,7 +344,7 @@ if (import.meta.env.DEV) {
     "4": "Background"
   },
   "quantization": "Static_INT8",
-  "model_size_mb": 3.2,
+  "model_size_mb": 5.61,
   "base_model": "EfficientNet-B0 + CBAM",
   "loss_function": "Focal_Loss(gamma=2.0, alpha=class_weights)",
   "preprocessing_note": "Resize 224x224, RAW 0-255 values (NO division), NHWC format. EfficientNet has internal norm layer.",
@@ -378,7 +381,7 @@ VitePWA({
 | **Background Class Logic (Frontend)** | Class 4 means "Not a leaf". | Farmers receive pesticide advice for hands/walls. |
 | **ONNX opset=16** | Required for EfficientNet Swish activation | Export fails or garbage output |
 | **🆕 Image Quality Validation** | Prevents blurry/dark/non-leaf images from inference | Wasted inference time, poor UX |
-| **🆕 TTA Inference Time** | 3 parallel inferences take ~3x longer than single inference | Ensure device can handle <400ms total latency |
+| **🆕 TTA Inference Time** | 3 sequential inferences take ~3x longer than single inference | Ensure device can handle <400ms total latency |
 
 ---
 
@@ -489,8 +492,7 @@ if (tensor.data[0] >= 250.0 && tensor.data[0] <= 255.0) {
 - **Improved User Experience:** Prevents farmers from wasting time on blurry/dark photos by providing immediate feedback
 - **Better Edge Case Handling:** TTA improves accuracy on partially visible leaves, angled shots, and uneven lighting
 
-### 🔑 Golden Rule for Future Modifications
-> **Trust the Rebuild + Load Weights approach.** Keras 3 strictly guards against deserializing Lambda layers and custom functions. Always rebuild the exact architecture in code first, then call `model.load_weights()`. And remember: **Focal Loss alpha replaces the need for `class_weight` in `model.fit()`**.
+
 
 ### 🆕 What's New in V4.0?
 - **+3.19% accuracy improvement** (90.875% → 94.06%)
@@ -504,4 +506,4 @@ if (tensor.data[0] >= 250.0 && tensor.data[0] <= 255.0) {
 
 ---
 
-*Last Updated: V4.0 Audited | License: Open Source for Agricultural Development*
+*Last Updated: V4.1 Audited | License: Open Source for Agricultural Development*
