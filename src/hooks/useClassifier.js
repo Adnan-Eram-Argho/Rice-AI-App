@@ -73,11 +73,11 @@ export default function useClassifier(cropId) {
       let minVal = 255, maxVal = 0
 
       // Find min/max for this channel (sample every 4th pixel for speed)
-      for (let p = 0; p < totalPixels; p += 4) {
-        const val = tensorData[p * 3 + ch]
-        if (val < minVal) minVal = val
-        if (val > maxVal) maxVal = val
-      }
+for (let p = 0; p < totalPixels; p++) {
+  const val = tensorData[p * 3 + ch]
+  if (val < minVal) minVal = val
+  if (val > maxVal) maxVal = val
+}
 
       const range = maxVal - minVal
       // Only stretch if there's meaningful range (avoids division by zero
