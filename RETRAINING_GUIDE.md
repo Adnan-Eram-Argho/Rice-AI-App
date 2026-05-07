@@ -15,8 +15,9 @@ All changes happen in:
 ### Center-Region Image Quality Assessment (IQA)
 The frontend validates image quality **before** sending to the model, using only the **center 60%** of the image:
 - **Center Brightness Check**: Rejects if center region avg brightness < 25 (too dark) or > 240 (overexposed)
-- **Center Blur Detection**: Rejects if center region brightness variance < 150 (no texture/detail)
-- **No green pixel check** — leaf presence is handled by the Background class
+- **Center Blur Detection**: Rejects if center region brightness variance < 150 (no texture/detail), **with smart leaf detection**
+- **🆕 Smart Leaf Detection**: Before rejecting for low variance, samples center pixels and checks if they're green-dominant (G > R+20 and G > B+10). If most pixels are green, assumes it's a healthy uniform leaf rather than blurry image. This prevents false rejections of perfectly good photos of healthy rice leaves with consistent green color.
+- **No standalone green pixel ratio check** — leaf presence is primarily handled by the Background class, but green detection helps IQA make better blur decisions
 - **Why center-only?** Leaves placed on সাদা কাগজ (white paper) or কালো ব্যাকগ্রাউন্ড (black surface) no longer falsely rejected
 - **User Feedback**: Displays bilingual error messages guiding users to retake better photos
 
@@ -366,9 +367,12 @@ Results use **weighted averaging**: Original=1, HFlip=1, VFlip=1, **CenterCrop=1
 The frontend validates the **center 60%** of images before inference. If you notice high rejection rates:
 - **Center brightness thresholds**: Adjust `< 25` (too dark) or `> 240` (too bright) in `useClassifier.js`
 - **Center blur variance**: Change threshold `< 150` based on camera quality of target devices
-- **No green pixel check** — leaf presence is handled by the AI's Background class
+- **🆕 Smart leaf detection tuning**: The green-dominant check uses G > R+20 and G > B+10. Adjust these values if healthy leaves are still being rejected, or if non-leaf green objects are passing through.
+- **Leaf detection sample rate**: Currently checks every 20th pixel from brightnessValues array. Increase/decrease the step size for more/less thorough checking.
+- **Green dominance threshold**: Currently requires > 5 green-dominant pixels out of sampled set. Adjust this number based on your testing.
+- **No standalone green pixel ratio** — leaf presence is handled by the AI's Background class; green detection only helps IQA avoid false "blurry" rejections on uniform healthy leaves
 - **Center-only approach**: Prevents false rejections when leaves are on white paper or black backgrounds
-- **Test thoroughly**: Verify IQA doesn't reject valid field photos under different lighting/background conditions
+- **Test thoroughly**: Verify IQA doesn't reject valid field photos under different lighting/background conditions, AND doesn't reject healthy uniform green leaves
 
 ### Per-Channel Contrast Stretching
 Applied before ALL TTA variations. If you notice issues:
@@ -568,6 +572,7 @@ ls -lh public/models/*.onnx
 - Adjust brightness thresholds in `validateImageQuality()` function
 - Lower green pixel ratio threshold for non-standard rice varieties
 - Reduce blur detection variance threshold for older cameras
+- **🆕 Tune smart leaf detection**: If healthy uniform green leaves are still rejected, adjust the green-dominant criteria (currently G > R+20 and G > B+10) or lower the required count (currently > 5 pixels)
 - Test with diverse field conditions (morning/evening light, cloudy days)
 
 **Issue**: TTA making app too slow (> 600ms per inference)  
@@ -649,11 +654,12 @@ Open the PWA in Dev Mode (`npm run dev`) and check the console after scanning an
 
 ### Testing IQA, Contrast Stretching, and TTA:
 1. **Center-Region IQA Testing**: Try photos on white paper, black surface, and natural backgrounds. Only genuinely dark/bright/blurry center regions should be rejected.
-2. **Contrast Stretching Testing**: Compare predictions with/without contrast stretching on photos with different backgrounds. Disease spots should be more confidently detected.
-3. **4-Variation TTA Testing**: Compare predictions with full 4-variation TTA vs single inference on edge cases (partial leaves, angled shots, white/black paper). TTA should provide more stable results.
-4. **Performance Profiling**: Use Chrome DevTools > Performance tab to measure total inference time with 4-variation TTA. Expect ~480-530ms due to sequential execution.
-5. **NaN Check**: Verify no NaN outputs occur during TTA by checking console logs.
-6. **Low-End Device Testing**: Critical to test on 2GB RAM devices to ensure WASM memory stability with 4 sequential inferences.
+2. **🆕 Smart Leaf Detection Testing**: Test with healthy uniform green leaves to ensure they're NOT falsely rejected as "blurry". Also test with non-leaf green objects (grass, other plants) to verify they don't bypass the blur check inappropriately.
+3. **Contrast Stretching Testing**: Compare predictions with/without contrast stretching on photos with different backgrounds. Disease spots should be more confidently detected.
+4. **4-Variation TTA Testing**: Compare predictions with full 4-variation TTA vs single inference on edge cases (partial leaves, angled shots, white/black paper). TTA should provide more stable results.
+5. **Performance Profiling**: Use Chrome DevTools > Performance tab to measure total inference time with 4-variation TTA. Expect ~480-530ms due to sequential execution.
+6. **NaN Check**: Verify no NaN outputs occur during TTA by checking console logs.
+7. **Low-End Device Testing**: Critical to test on 2GB RAM devices to ensure WASM memory stability with 4 sequential inferences.
 
 > 🌾 *This guide ensures zero React code changes for model updates. All modifications happen through configuration files, making the app future-proof and easily maintainable. V4.2 has been audited against actual Colab training source code to ensure accuracy. Now includes Center-Region IQA (tolerates white/black backgrounds), Per-Channel Contrast Stretching, and 4-Variation Weighted TTA for improved robustness across diverse photography conditions.*
 

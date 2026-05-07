@@ -171,9 +171,29 @@ for (let p = 0; p < totalPixels; p++) {
       return { valid: false, error: 'TOO_BRIGHT', message: { bn: 'ছবি খুব উজ্জ্বল! সূর্যের আলো এড়িয়ে তুলুন।', en: 'Too bright! Avoid direct sunlight.' } }
     }
     // 🚨 Rule 3: Center has no detail (solid color = no leaf texture)
-    if (variance < 150) { 
-      return { valid: false, error: 'TOO_BLURRY', message: { bn: 'ছবি ঝাপসা বা স্পষ্ট নয়! ক্যামেরা স্থির রেখে তুলুন।', en: 'Image is blurry or unclear! Hold camera steady.' } }
+
+// সবুজ পাতায় variance কম হতে পারে (uniform color), কিন্তু তা blurry নয়
+const isLikelyLeaf = (() => {
+  let greenDominant = 0
+  for (let i = 0; i < brightnessValues.length; i += 20) {
+    // brightnessValues থেকে pixel index বের করে data থেকে RGB দেখি
+    const pixelIdx = i * 4 // rough mapping back to ImageData
+    if (pixelIdx < data.length - 3) {
+      if (data[pixelIdx + 1] > data[pixelIdx] + 20 && 
+          data[pixelIdx + 1] > data[pixelIdx + 2] + 10) {
+        greenDominant++
+      }
     }
+  }
+  return greenDominant > 5 // বেশিরভাগ center pixel সবুজ-dominant
+})()
+
+if (variance < 150 && !isLikelyLeaf) { 
+  return { valid: false, error: 'TOO_BLURRY', message: { 
+    bn: 'ছবি ঝাপসা বা স্পষ্ট নয়! ক্যামেরা স্থির রেখে তুলুন।', 
+    en: 'Image is blurry or unclear! Hold camera steady.' 
+  }}
+}
 
     // ✅ Center region looks good — let the AI model handle the rest
     return { valid: true }

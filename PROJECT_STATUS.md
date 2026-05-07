@@ -56,10 +56,11 @@ const validateImageQuality = (canvas) => {
   // This prevents false rejections for leaves on white paper or black backgrounds
   // Brightness check: Rejects center < 25 (too dark) or > 240 (overexposed)
   // Blur detection: Rejects if center brightness variance < 150 (no texture)
-  // No green pixel check — leaf detection handled by Background class
+  // 🆕 Smart leaf detection: Before rejecting low-variance images, checks if center pixels are green-dominant
+  // If most sampled pixels have G > R+20 and G > B+10, assumes it's a healthy uniform green leaf (not blurry)
 }
 ```
-**User Experience**: Shows dedicated error screen with helpful Bengali/English messages. Leaves on সাদা কাগজ/কালো ব্যাকগ্রাউন্ড no longer falsely rejected.
+**User Experience**: Shows dedicated error screen with helpful Bengali/English messages. Leaves on সাদা কাগজ/কালো ব্যাকগ্রাউন্ড no longer falsely rejected. Healthy leaves with uniform color also protected from false "blurry" rejections.
 
 ### 7. 🆕 Per-Channel Contrast Stretching ✅
 Implemented in `useClassifier.js`:

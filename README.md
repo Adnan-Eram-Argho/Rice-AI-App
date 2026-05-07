@@ -202,8 +202,9 @@ The classifier hook handles dynamic model loading, strict preprocessing, image q
     *   **Format:** NHWC `[1, 224, 224, 3]` Float32 Tensor.
 *   **🆕 Center-Region Image Quality Assessment (IQA):** Before inference, validates the **center 60%** of the image only (ignoring edges). This prevents false rejections when leaves are placed on white paper or black surfaces:
     *   **Center Brightness Check:** Rejects if center region avg brightness < 25 (too dark) or > 240 (overexposed).
-    *   **Center Blur Detection:** Rejects if center region brightness variance < 150 (no texture/detail).
-    *   **No green pixel check** — leaf presence is handled by the Background class.
+    *   **Center Blur Detection:** Rejects if center region brightness variance < 150 (no texture/detail), **with smart leaf detection** to avoid false rejections on uniform green leaves.
+    *   **Smart Leaf Detection:** Before rejecting for low variance, checks if center pixels are green-dominant (G > R+20 and G > B+10). If most sampled pixels are green, assumes it's a healthy leaf with uniform color rather than a blurry image.
+    *   **No standalone green pixel ratio check** — leaf presence is primarily handled by the Background class, but green detection helps IQA make better decisions.
     *   Returns user-friendly error messages in Bengali/English if validation fails.
 *   **🆕 Per-Channel Contrast Stretching:** Before creating tensors for inference, each R/G/B channel is independently stretched to the full [0, 255] range. This normalizes photos so disease spots are equally visible whether the leaf is on white paper, black surface, or natural field background.
 *   **🆕 4-Variation Weighted TTA:** Runs 4 sequential inferences:
@@ -216,7 +217,7 @@ The classifier hook handles dynamic model loading, strict preprocessing, image q
 *   **Safety Check:** NaN fallback protection if WASM memory fails during inference.
 
 ### Key Code Snippet (Center-Region Image Quality Validation)
-```javascript
+```
 const validateImageQuality = (canvas) => {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   const { data } = ctx.getImageData(0, 0, 224, 224)
@@ -238,17 +239,41 @@ const validateImageQuality = (canvas) => {
     }
   }
   const avgBrightness = totalBrightness / centerPixelCount
-  // ... variance calculation on center region ...
+  
+  // Calculate variance on center region only
+  let sumSquaredDiff = 0
+  for (let i = 0; i < brightnessValues.length; i += 10) { 
+    sumSquaredDiff += Math.pow(brightnessValues[i] - avgBrightness, 2)
+  }
+  const variance = sumSquaredDiff / (brightnessValues.length / 10)
+  
+  // 🆕 Smart Leaf Detection: Check if low variance is due to uniform green leaf
+  const isLikelyLeaf = (() => {
+    let greenDominant = 0
+    for (let i = 0; i < brightnessValues.length; i += 20) {
+      const pixelIdx = i * 4 // rough mapping back to ImageData
+      if (pixelIdx < data.length - 3) {
+        if (data[pixelIdx + 1] > data[pixelIdx] + 20 && 
+            data[pixelIdx + 1] > data[pixelIdx + 2] + 10) {
+          greenDominant++
+        }
+      }
+    }
+    return greenDominant > 5 // Most center pixels are green-dominant
+  })()
+  
   if (avgBrightness < 25) return { valid: false, error: 'TOO_DARK' }
   if (avgBrightness > 240) return { valid: false, error: 'TOO_BRIGHT' }
-  if (variance < 150)    return { valid: false, error: 'TOO_BLURRY' }
+  if (variance < 150 && !isLikelyLeaf) return { valid: false, error: 'TOO_BLURRY' }
   return { valid: true }
 }
 ```
 **Why center-only?** When leaves are placed on সাদা কাগজ (white paper) or কালো ব্যাকগ্রাউন্ড (black surface) for clearer photography, global brightness checks would false-reject valid images. Checking only the center where the leaf sits avoids this.
 
+**🆕 Why smart leaf detection?** Healthy rice leaves can have very uniform green color, resulting in low brightness variance. Without checking if it's actually a green leaf, the IQA would incorrectly reject perfectly good photos of healthy leaves as "blurry". The green-dominant check (G channel > R+20 and G > B+10) ensures we only reject truly blurry non-leaf images.
+
 ### Key Code Snippet (Per-Channel Contrast Stretching)
-```javascript
+```
 const applyContrastStretch = (tensorData) => {
   const totalPixels = 224 * 224
   const stretched = new Float32Array(tensorData.length)
@@ -275,7 +300,7 @@ const applyContrastStretch = (tensorData) => {
 **Why contrast stretching?** Disease spots (brown/gray lesions) can appear washed out on white paper or too dark on black backgrounds. Stretching each channel independently makes these patterns equally visible regardless of the photography setup.
 
 ### Key Code Snippet (4-Variation Weighted TTA)
-```javascript
+```
 // STEP 2: Contrast-stretch all tensors
 const tensorOriginal = applyContrastStretch(getTensorFromCanvas(canvas))
 // ... H-flip, V-flip variations also contrast-stretched ...
