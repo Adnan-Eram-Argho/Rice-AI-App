@@ -1504,7 +1504,7 @@ node generate-icons.js
 
 **Maintainer**: Adnan Eram Argho  
 **Last Updated**: 2026-05-11 (V4.2 Documentation Merge)  
-**License**: Open Source for Agricultural Development  
+**License:** Proprietary. All rights reserved. © 2026 Adnan Eram Argho. Unauthorized use, copying, or distribution is strictly prohibited.
 
 **Questions?** This README is the single source of truth. All decisions, configurations, and implementations are documented herein. For future improvements, refer to the "For the Next AI Agent" section at the top.
 
